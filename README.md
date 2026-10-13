@@ -1,140 +1,137 @@
-# 🌸 Flower: A Flow Matching Solver for Inverse Problems
-[![arXiv](https://img.shields.io/badge/arXiv-2509.26287-b31b1b.svg)](https://arxiv.org/abs/2509.26287)
-[![OpenReview](https://img.shields.io/badge/OpenReview-ICLR_2026-blue.svg)](https://openreview.net/forum?id=QGd34p02mI)
-[![Project Page](https://img.shields.io/badge/Project%20Page-Online-green.svg)](https://mehrsapo.github.io/Flower/)
+# FLOWER Under Noise Scale Mismatch
 
-This GitHub repository contains the code for our ICLR 2026 Flower [paper](https://openreview.net/forum?id=QGd34p02mI), a method that aims to solve inverse problems with pretrained flow matching models through a Bayesian viewpoint. Flower consists of three main steps. 
-- Destination Estimation 
-- Destination Refinement
-- Time Progression 
+This repository studies how the original FLOWER inverse-problem solver behaves when the reconstruction algorithm receives an incorrect Gaussian measurement-noise standard deviation. It evaluates the released model and reconstruction rule without introducing another method.
 
-which jointly jointly approximate posterior sampling and solve linear inverse problems. Read the paper for more details! 
+[Open the full benchmark in Google Colab](https://colab.research.google.com/github/ItayShorian07/Diffusion--flower-project/blob/main/notebooks/run_full_benchmark_colab.ipynb)
 
-<img src="flower_demo/flower_steps.png" scale=0.8/>
+## Research question
 
-A visual example for the solution path of Flower for box inpainting:
+Measurements follow
 
-<img src="flower_demo/31c13cdf-40d8-4567-a913-ca014191a198.jpeg" scale=0.6/>
+\[
+y = Hx + n, \qquad n \sim \mathcal N(0, \sigma_{\mathrm{true}}^2 I).
+\]
 
-## 1. Getting started
-To get started, clone the repository and create the conda environment:
+FLOWER reconstructs the same measurement five times with
+
+\[
+\frac{\sigma_{\mathrm{assumed}}}{\sigma_{\mathrm{true}}}
+\in \{0.5, 0.75, 1, 1.25, 1.5\}.
+\]
+
+The ratio multiplies the standard deviation. The corresponding assumed-to-true variance ratios are \(0.25, 0.5625, 1, 1.5625, 2.25\). The covariance shape remains correct and fixed, so the experiment isolates noise-scale misspecification.
+
+## Experimental protocol
+
+The benchmark uses two datasets and all five inverse problems reported in the FLOWER paper.
+
+| Dataset | Images | Resolution | Sampling rule |
+|---|---:|---:|---|
+| CelebA | 20 | 128 x 128 | Fixed random sample from the paper-ordered first 100 test images |
+| AFHQ-Cat | 20 | 256 x 256 | Fixed random sample from the paper-ordered first 100 test images |
+
+The sample seed is 2026. The selected zero-based positions are recorded in `data_splits/random20_seed2026.json`. The same images appear in every task and every noise condition.
+
+| Inverse problem | Measurement operator | True noise standard deviation | Dataset-specific parameter |
+|---|---|---:|---|
+| Gaussian denoising | Identity | 0.20 | None |
+| Gaussian deblurring | Circular Gaussian blur | 0.05 | Blur sigma 1.0 on CelebA and 3.0 on AFHQ-Cat |
+| Super-resolution | Decimation | 0.05 | 2x on CelebA and 4x on AFHQ-Cat |
+| Random inpainting | Fixed Bernoulli mask | 0.01 | 70 percent missing, mask seed 42 |
+| Box inpainting | Fixed centered mask | 0.05 | 40 x 40 on CelebA and 80 x 80 on AFHQ-Cat |
+
+For each image and task, the code generates one measurement and reuses it across all five assumed noise levels. The operator, mask or blur kernel, measurement-noise realization, model weights, and FLOWER source-noise trajectory also remain fixed. The control condition is the ratio 1.0.
+
+The full experiment contains 1,000 reconstructions:
+
+\[
+2\text{ datasets} \times 5\text{ tasks} \times 20\text{ images} \times 5\text{ ratios}.
+\]
+
+The configuration preserves the public paper scripts' FLOWER step counts: 100 steps for every CelebA task; for AFHQ-Cat, 100 steps for denoising and box inpainting, 200 for random inpainting, and 500 for deblurring and super-resolution.
+
+## Metrics and figures
+
+The evaluation uses the public FLOWER conventions for PSNR, SSIM, and LPIPS. The primary paired statistic is
+
+\[
+\Delta \mathrm{PSNR}_i(r)
+=
+\mathrm{PSNR}_i(r)-\mathrm{PSNR}_i(1).
+\]
+
+The plotting script creates exactly five figures:
+
+1. Mean paired PSNR change with 95 percent confidence intervals for every task and dataset.
+2. CelebA final reconstructions for the most and least sensitive tasks.
+3. AFHQ-Cat final reconstructions for the most and least sensitive tasks.
+4. FLOWER trajectories at \(t=0.2,0.4,0.6,0.8,1.0\) for a reproducibly selected case.
+5. The prior destination, measurement-refined destination, and next trajectory state at three times and three noise ratios.
+
+The full 50-row results table contains both datasets, five tasks, and five ratios. The analysis case uses the setting with the largest mean absolute paired PSNR change and the image closest to the median image-level sensitivity.
+
+## Run on Google Colab
+
+The Colab notebook is the recommended route because the paper-aligned AFHQ experiments use up to 500 model evaluations per reconstruction. Open the badge above, select a T4 GPU, and run all cells. The notebook:
+
+- checks that CUDA is available;
+- mounts Google Drive;
+- downloads only the two required FLOWER checkpoints;
+- downloads the official datasets and extracts only the selected 20 images per dataset;
+- resumes completed rows after a disconnect;
+- writes raw metrics, aggregate tables, reconstructions, internal states, and figures to `MyDrive/RobustFLOWER`.
+
+## Run locally
+
+Create an environment and install the dependencies:
 
 ```bash
-cd Flower
-conda env create -f environment.yml
-conda activate flower
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-robustness.txt
 ```
 
-This will install all dependencies and the package in editable mode. The environment uses Python 3.12.2 with PyTorch installed via conda (CUDA 12.4 by default — edit `environment.yml` to match your CUDA version, or replace `pytorch-cuda=12.4` with `cpuonly` for a CPU-only setup).
-
-### 1.1. Download data
-
-To download the [CelebA](https://www.kaggle.com/datas/jessicali9530/celeba-data) and [AFHQ-Cat](https://github.com/clovaai/stargan-v2/blob/master/README.md#animal-faces-hq-data-afhq) datas, run the command:
-```bash
-bash download_data.sh
-```
-Note that since the AFHQ-Cat data does not have a test split, we create one when downloading the data.
-
-### 1.2. Download pretrained models
-
-To download all the pretrained model weights, run the command:
+Download the two official checkpoints and prepare the 40 selected images:
 
 ```bash
-bash download_models.sh
+bash scripts/download_benchmark_models.sh
+bash scripts/prepare_benchmark_data.sh
 ```
 
-## 2. Demo notebooks
+Run and analyze the benchmark:
 
-Two interactive Jupyter notebooks are included under the
-`flower_demo/` directory to help you get a feel for how the Flower
-algorithm is used in practice. 
+```bash
+.venv/bin/python experiments/run_noise_mismatch.py --device cuda
+.venv/bin/python experiments/summarize_results.py
+.venv/bin/python experiments/capture_analysis.py --device cuda
+.venv/bin/python experiments/plot_results.py
+```
 
-### 2.1 CS‑MRI with radial sampling
+The runner writes each completed image-task batch immediately. Run the same command again to resume. Use `--quick` only for a smoke test; its outputs are not valid final results.
 
-`flower_demo/exps_cs_mri_radial.ipynb` starts by loading an
-`afhq_cat`‑trained Flower model (the default OT variant) and a single
-RGB test image.  A radial undersampling mask is read from
-`radial_mask.mat`, and forward/adjoint MRI operators are defined using
-PyTorch FFTs.  The notebook implements the conjugate‑gradient solver
-used by Flower and then runs two reconstruction modes:
-`flower` (isotropic covariance approximation $\gamma = 0$) and `flower_cov` (full
-posterior covariance sampling $\gamma=1$).  After the iterative posterior sampler
-runs for 100 steps, the ground truth, zero‑filled adjoint image, and
-both Flower reconstructions are displayed side‑by‑side, along with the
-sampling sparsity and noise level.
+## Repository structure
 
-### 2.2 Non‑isotropic denoising
+```text
+config/robustness.json                 Complete experimental protocol
+data_splits/                           Fixed image manifests and selection metadata
+experiments/run_noise_mismatch.py      Paired GPU benchmark with resume support
+experiments/summarize_results.py       Per-image deltas, means, and confidence intervals
+experiments/capture_analysis.py        Reproducible trajectory and internal-state capture
+experiments/plot_results.py            The five predefined paper-style figures
+notebooks/run_full_benchmark_colab.ipynb
+robust_flower/                          Solver, operators, metrics, data, and model loading
+scripts/                                Minimal data and checkpoint preparation
+tests/                                  Determinism, adjoint, refinement, and capture tests
+tools/                                  English report and presentation builders
+```
 
-`flower_demo/exps_non_iso_noise.ipynb` demonstrates the use of Flower on two CelebA images affected by spatially
-varying noise.  The notebook constructs a per‑pixel variance map where
-the centre region has four times the noise standard deviation of the
-border, and it extends the conjugate‑gradient solver to handle this
-non‑isotropic covariance directly.  
+## Validation
 
-*NOTE:* any new inverse problem can be tackled simply by defining a
-different linear forward operator `H` and its adjoint `Hᵗ`—the CS‑MRI
-notebook shows a masked FFT example, but you could equally replace it
-with convolution, subsampling, or any other linear map and then run
-the same code.
+```bash
+.venv/bin/pytest -q
+```
 
-## 3. Reproduction of paper results for solving inverse problems
-Our comparisons build upon the [PnP-Flow]( https://github.com/annegnx/PnP-Flow) benchmark. 
+The tests verify deterministic corruption, paired solver randomness, operator adjoints, closed-form Gaussian refinements, super-resolution dimensions, and trajectory capture.
 
-Use the bash scripts in the ```scripts/``` folder.
+## Source and attribution
 
-Visual and numerical results will be saved in the ```results/``` folder.
-
-The available methods are
-  - ```flower``` (our method default with $\gamma = 0$)
-  - ```flower_cov``` (our method with $\gamma = 1$)
-  - ```pnp_flow``` (from this [paper](https://arxiv.org/pdf/2402.14017))
-  - ```ot_ode``` (from this [paper](https://openreview.net/forum?id=PLIt3a4yTm&referrer=%5Bthe%20profile%20of%20Ashwini%20Pokle%5D(%2Fprofile%3Fid%3D~Ashwini_Pokle1)))
-  - ```d_flow``` (from this [paper](https://arxiv.org/pdf/2402.14017))
-  - ```flow_priors``` (from this [paper](https://arxiv.org/abs/2405.18816))
-  - ```pnp_diff``` (from this [paper](https://openaccess.thecvf.com/content/CVPR2023W/NTIRE/papers/Zhu_Denoising_Diffusion_Models_for_Plug-and-Play_Image_Restoration_CVPRW_2023_paper.pdf))
-  - ```pnp_gs``` (from this [paper](https://openreview.net/pdf?id=fPhKeld3Okz))
-
-Note that ```flower``` and ```flower_cov``` support two modes for the pretrained flow model: 1. ```ot```: with optimal transport coupling (used for comparisons), and 2. ```flow_indp```: with no optimal transport coupling during training. Read the paper for more details.
-
-The available inverse problems are:
-  - Denoising -->  ```problem: 'denoising'```
-  - Gaussian deblurring -->  ```problem: 'gaussian_deblurring'```
-  - Super-resolution -->  ```problem: 'superresolution'```
-  - Box inpainting -->  ```problem: 'inpainting'```
-  - Random inpainting -->  ```problem: 'random_inpainting'```
-
-
-## 4. Questions & Contact
-
-  If you run into issues, have questions about the code, or would like to
-  provide feedback, please don't hesitate to get in touch:
-
-  📧 **Email:** mehrsapo@gmail.com
-
-## 5. Citation
-
-  If you use this code in your research, please consider citing our paper:
-
-  ```
-  @inproceedings{pourya2026flower,
-    title={Flower: A Flow-Matching Solver for Inverse Problems},
-    author={Mehrsa Pourya and Bassam El Rawas and Michael Unser},
-    booktitle={The Fourteenth International Conference on Learning Representations},
-    year={2026},
-    url={https://openreview.net/forum?id=QGd34p02mI}
-  }
-  ```
-
-  We'll be happy to help or point you in the right direction.
-
-## Acknowledgements
-This repository builds upon the following publicly available codes:
-- [PnP-Flow](https://arxiv.org/abs/2410.02423) available at https://github.com/annegnx/PnP-Flow,
-
-which builds upon:
-
-- [PnP-GS](https://openreview.net/pdf?id=fPhKeld3Okz) available at https://github.com/samuro95/GSPnP
-- [DiffPIR](https://openaccess.thecvf.com/content/CVPR2023W/NTIRE/papers/Zhu_Denoising_Diffusion_Models_for_Plug-and-Play_Image_Restoration_CVPRW_2023_paper.pdf) from the [DeepInv](https://deepinv.github.io/deepinv/stubs/deepinv.sampling.DiffPIR.html#deepinv.sampling.DiffPIR) library
-- The folder ImageGeneration is copied from the [Rectified Flow](https://github.com/gnobitab/RectifiedFlow) repository.
-- We thank Anne Gagneux and Ségolène Martin for their assistance in reproducing PnP-Flow results.
-
+This project builds on [FLOWER: A Flow-Matching Solver for Inverse Problems](https://openreview.net/forum?id=QGd34p02mI) by Mehrsa Pourya, Bassam El Rawas, and Michael Unser and the [official FLOWER repository](https://github.com/mehrsapo/Flower). The retained `pnpflow/models.py` file provides the official UNet architecture needed to load the released checkpoints. Dataset files and model weights are downloaded at runtime and are not committed to this repository.

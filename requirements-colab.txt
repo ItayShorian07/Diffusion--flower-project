@@ -1,0 +1,6 @@
+numpy>=1.26
+Pillow>=10.0
+scikit-image>=0.24
+pytorch-ignite>=0.5
+matplotlib>=3.9
+lpips>=0.1.4

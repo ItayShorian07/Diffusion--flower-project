@@ -1,21 +1,27 @@
-model/
+# Large runtime assets
 data/
-results/
+model/
 *.zip
-*.npy
-*.pth
-*.DS_Store
-demo/model_final_celeba.pt
-dirichlet/model_final_mnist_dirichlet.pt
-.ipynb_checkpoints
-demo/.ipynb_checkpoints
-demo/demo_copy.ipynb
-demo/iter*.png
-
-*.pyc
-*/__pycache__/*
-/flower.egg-info/*
-/pnpflow.egg-info/*
 *.pt
 
-build/
+# Python and test caches
+.venv/
+.cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+.coverage
+htmlcov/
+*.egg-info/
+
+# Private build and diagnostic outputs
+artifacts/build/
+artifacts/experiments/smoke*/
+artifacts/experiments/bench*/
+tmp/
+.chart-data-*/
+
+# Local editor files
+.DS_Store
+.ipynb_checkpoints/

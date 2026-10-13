@@ -610,7 +610,7 @@ class InceptionV3(nn.Module):
                 inception.Mixed_7a,
                 inception.Mixed_7b,
                 inception.Mixed_7c,
-                nn.AdaptiveAvgPool2d(output_size=(1, 1))
+                nn.AvgPool2d(kernel_size=8)
             ]
             self.blocks.append(nn.Sequential(*block3))
 
