@@ -2,7 +2,7 @@
 
 This repository studies how the original FLOWER inverse-problem solver behaves when the reconstruction algorithm receives an incorrect Gaussian measurement-noise standard deviation. It evaluates the released model and reconstruction rule without introducing another method.
 
-[Open the full benchmark in Google Colab](https://colab.research.google.com/github/ItayShorian07/Diffusion--flower-project/blob/main/notebooks/run_full_benchmark_colab.ipynb)
+[Download the Kaggle benchmark notebook](notebooks/run_full_benchmark_kaggle.ipynb) or [open the Google Colab version](https://colab.research.google.com/github/ItayShorian07/Diffusion--flower-project/blob/main/notebooks/run_full_benchmark_colab.ipynb).
 
 ## Research question
 
@@ -70,6 +70,12 @@ The plotting script creates exactly five figures:
 
 The full 50-row results table contains both datasets, five tasks, and five ratios. The analysis case uses the setting with the largest mean absolute paired PSNR change and the image closest to the median image-level sensitivity.
 
+## Run on Kaggle
+
+Kaggle is the recommended free route because **Save Version > Save & Run All** executes the notebook as a background version run and preserves files written to `/kaggle/working` as notebook outputs. Import `notebooks/run_full_benchmark_kaggle.ipynb`, enable a GPU and Internet in the notebook options, then select **Save Version > Save & Run All**. The final output is `robust_flower_results.zip`.
+
+The notebook validates CUDA, clones this repository, downloads the two official checkpoints and only the selected benchmark images, runs all 1,000 reconstructions, builds the aggregate tables and five figures, validates the row and figure counts, and packages the result.
+
 ## Run on Google Colab
 
 The Colab notebook is the recommended route because the paper-aligned AFHQ experiments use up to 500 model evaluations per reconstruction. Open the badge above, select a T4 GPU, and run all cells. The notebook:
@@ -118,6 +124,7 @@ experiments/summarize_results.py       Per-image deltas, means, and confidence i
 experiments/capture_analysis.py        Reproducible trajectory and internal-state capture
 experiments/plot_results.py            The five predefined paper-style figures
 notebooks/run_full_benchmark_colab.ipynb
+notebooks/run_full_benchmark_kaggle.ipynb
 robust_flower/                          Solver, operators, metrics, data, and model loading
 scripts/                                Minimal data and checkpoint preparation
 tests/                                  Determinism, adjoint, refinement, and capture tests
