@@ -3,24 +3,51 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
-
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "artifacts/build/report-equations"
 
 
 def render(name: str, expression: str, width: float, height: float = 0.72) -> None:
-    fig = plt.figure(figsize=(width, height), dpi=320)
-    fig.patch.set_alpha(0)
-    fig.text(0.5, 0.5, expression, ha="center", va="center", fontsize=16, color="#111111")
-    fig.savefig(OUTPUT / name, dpi=320, transparent=True, bbox_inches="tight", pad_inches=0.04)
-    plt.close(fig)
+    del width, height
+    latex = shutil.which("pdflatex")
+    ghostscript = shutil.which("gs")
+    if latex is None or ghostscript is None:
+        raise RuntimeError("pdflatex and Ghostscript are required to render report equations")
+    source = rf"""\documentclass[preview,border=4pt]{{standalone}}
+\usepackage{{amsmath,amssymb}}
+\begin{{document}}
+\noindent\mbox{{\Large {expression}}}
+\end{{document}}
+"""
+    with tempfile.TemporaryDirectory(prefix="flower-equation-") as temporary:
+        temporary_path = Path(temporary)
+        tex_path = temporary_path / "equation.tex"
+        tex_path.write_text(source)
+        subprocess.run(
+            [latex, "-interaction=nonstopmode", "-halt-on-error", tex_path.name],
+            cwd=temporary_path,
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            [
+                ghostscript,
+                "-dSAFER",
+                "-dBATCH",
+                "-dNOPAUSE",
+                "-sDEVICE=pngalpha",
+                "-r320",
+                f"-sOutputFile={OUTPUT / name}",
+                str(temporary_path / "equation.pdf"),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
 
 
 def main() -> None:

@@ -6,6 +6,7 @@ model/
 
 # Python and test caches
 .venv/
+node_modules/
 .cache/
 .pytest_cache/
 .ruff_cache/

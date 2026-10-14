@@ -1,0 +1,186 @@
+{
+  "config": {
+    "protocol": "paper_benchmark_random20_sigma_mismatch",
+    "selection_seed": 2026,
+    "measurement_seed": 42000,
+    "solver_seed": 73000,
+    "mask_seed": 42,
+    "image_count_per_dataset": 20,
+    "scale_factors": [
+      0.5,
+      0.75,
+      1.0,
+      1.25,
+      1.5
+    ],
+    "gamma": 0,
+    "cg_max_iterations": 50,
+    "cg_tolerance": 1e-05,
+    "qualitative_sample_position": 7,
+    "datasets": {
+      "celeba": {
+        "label": "CelebA",
+        "dataset_root": "data/celeba/paper_random20_seed2026",
+        "image_manifest": "data_splits/celeba_paper100_random20_seed2026.txt",
+        "checkpoint": "model/celeba/ot/model_final.pt",
+        "image_size": 128,
+        "center_crop": 178,
+        "steps": {
+          "denoising": 100,
+          "gaussian_deblurring": 100,
+          "super_resolution": 100,
+          "random_inpainting": 100,
+          "box_inpainting": 100
+        }
+      },
+      "afhq_cat": {
+        "label": "AFHQ-Cat",
+        "dataset_root": "data/afhq_cat/test/cat",
+        "image_manifest": "data_splits/afhq_paper100_random20_seed2026.txt",
+        "checkpoint": "model/afhq_cat/ot/model_final.pt",
+        "image_size": 256,
+        "steps": {
+          "denoising": 100,
+          "gaussian_deblurring": 500,
+          "super_resolution": 500,
+          "random_inpainting": 200,
+          "box_inpainting": 100
+        }
+      }
+    },
+    "tasks": {
+      "denoising": {
+        "label": "Denoising",
+        "true_sigma": 0.2
+      },
+      "gaussian_deblurring": {
+        "label": "Gaussian deblurring",
+        "true_sigma": 0.05,
+        "kernel_size": 61,
+        "blur_sigma": {
+          "celeba": 1.0,
+          "afhq_cat": 3.0
+        }
+      },
+      "super_resolution": {
+        "label": "Super-resolution",
+        "true_sigma": 0.05,
+        "scale_factor": {
+          "celeba": 2,
+          "afhq_cat": 4
+        }
+      },
+      "random_inpainting": {
+        "label": "Random inpainting",
+        "true_sigma": 0.01,
+        "missing_fraction": 0.7
+      },
+      "box_inpainting": {
+        "label": "Box inpainting",
+        "true_sigma": 0.05,
+        "box_size": {
+          "celeba": 40,
+          "afhq_cat": 80
+        }
+      }
+    },
+    "paper_flower1_ot_reference": {
+      "celeba": {
+        "denoising": [
+          32.28,
+          0.914,
+          0.034
+        ],
+        "gaussian_deblurring": [
+          34.98,
+          0.947,
+          0.026
+        ],
+        "super_resolution": [
+          32.36,
+          0.923,
+          0.034
+        ],
+        "random_inpainting": [
+          33.08,
+          0.944,
+          0.018
+        ],
+        "box_inpainting": [
+          31.19,
+          0.945,
+          0.022
+        ]
+      },
+      "afhq_cat": {
+        "denoising": [
+          31.69,
+          0.879,
+          0.102
+        ],
+        "gaussian_deblurring": [
+          28.64,
+          0.775,
+          0.255
+        ],
+        "super_resolution": [
+          26.23,
+          0.741,
+          0.272
+        ],
+        "random_inpainting": [
+          32.97,
+          0.918,
+          0.04
+        ],
+        "box_inpainting": [
+          26.19,
+          0.915,
+          0.063
+        ]
+      }
+    }
+  },
+  "device": "cuda",
+  "torch_version": "2.11.0+cu128",
+  "lpips_enabled": true,
+  "paired_conditions": true,
+  "pairing": "same image, measurement, H, mask/kernel, and FLOWER source-noise trajectory across ratios",
+  "sigma_ratio_definition": "assumed standard deviation / true standard deviation",
+  "variance_ratio_definition": "sigma_ratio squared",
+  "selected_paper_indices_zero_based": [
+    13,
+    15,
+    28,
+    40,
+    53,
+    56,
+    62,
+    64,
+    65,
+    70,
+    71,
+    73,
+    75,
+    76,
+    79,
+    82,
+    93,
+    96,
+    98,
+    99
+  ],
+  "requested_datasets": [
+    "celeba",
+    "afhq_cat"
+  ],
+  "requested_tasks": [
+    "denoising",
+    "gaussian_deblurring",
+    "super_resolution",
+    "random_inpainting",
+    "box_inpainting"
+  ],
+  "max_steps_override": null,
+  "completed_rows": 1000
+}

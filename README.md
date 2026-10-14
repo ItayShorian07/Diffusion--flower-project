@@ -2,7 +2,7 @@
 
 This repository studies how the original FLOWER inverse-problem solver behaves when the reconstruction algorithm receives an incorrect Gaussian measurement-noise standard deviation. It evaluates the released model and reconstruction rule without introducing another method.
 
-[Download the Kaggle benchmark notebook](notebooks/run_full_benchmark_kaggle.ipynb) or [open the Google Colab version](https://colab.research.google.com/github/ItayShorian07/Diffusion--flower-project/blob/main/notebooks/run_full_benchmark_colab.ipynb).
+[Download the Kaggle benchmark notebook](notebooks/run_full_benchmark_kaggle.ipynb).
 
 ## Research question
 
@@ -70,22 +70,30 @@ The plotting script creates exactly five figures:
 
 The full 50-row results table contains both datasets, five tasks, and five ratios. The analysis case uses the setting with the largest mean absolute paired PSNR change and the image closest to the median image-level sensitivity.
 
+## Completed results
+
+The Kaggle run completed all 1,000 reconstructions on Tesla T4 GPUs. The main findings are:
+
+- CelebA denoising is the most sensitive setting, with a 1.05 dB mean absolute response of the paired PSNR curve across the four mismatched ratios.
+- CelebA random inpainting is the least sensitive setting at 0.02 dB; AFHQ-Cat random inpainting is similarly flat at 0.03 dB.
+- Noise overestimation reduces mean PSNR in every tested dataset-task setting.
+- Moderate underestimation can compensate for model or discretization error. At a 0.5 standard-deviation ratio, super-resolution improves by 0.42 dB on CelebA and 0.47 dB on AFHQ-Cat, with consistent SSIM and LPIPS movement.
+- AFHQ-Cat denoising is nonlinear: ratio 0.75 improves PSNR by 0.35 dB, but ratio 0.5 reduces it by 1.25 dB.
+
+These findings describe robustness of the released Flower1-OT checkpoints on the fixed 20-image samples. They do not introduce a noise estimator or a newly trained model.
+
+Final deliverables are stored in:
+
+- `artifacts/report/flower-noise-scale-mismatch-report.docx`
+- `artifacts/presentation/flower-noise-scale-mismatch.pptx`
+- `artifacts/figures/`
+- `artifacts/experiments/main/`
+
 ## Run on Kaggle
 
 Kaggle is the recommended free route because **Save Version > Save & Run All** executes the notebook as a background version run and preserves files written to `/kaggle/working` as notebook outputs. Import `notebooks/run_full_benchmark_kaggle.ipynb`, enable a GPU and Internet in the notebook options, then select **Save Version > Save & Run All**. The final output is `robust_flower_results.zip`.
 
 The notebook validates CUDA, clones this repository, downloads the two official checkpoints and only the selected benchmark images, runs all 1,000 reconstructions, builds the aggregate tables and five figures, validates the row and figure counts, and packages the result.
-
-## Run on Google Colab
-
-The Colab notebook is the recommended route because the paper-aligned AFHQ experiments use up to 500 model evaluations per reconstruction. Open the badge above, select a T4 GPU, and run all cells. The notebook:
-
-- checks that CUDA is available;
-- mounts Google Drive;
-- downloads only the two required FLOWER checkpoints;
-- downloads the official datasets and extracts only the selected 20 images per dataset;
-- resumes completed rows after a disconnect;
-- writes raw metrics, aggregate tables, reconstructions, internal states, and figures to `MyDrive/RobustFLOWER`.
 
 ## Run locally
 
@@ -123,7 +131,6 @@ experiments/run_noise_mismatch.py      Paired GPU benchmark with resume support
 experiments/summarize_results.py       Per-image deltas, means, and confidence intervals
 experiments/capture_analysis.py        Reproducible trajectory and internal-state capture
 experiments/plot_results.py            The five predefined paper-style figures
-notebooks/run_full_benchmark_colab.ipynb
 notebooks/run_full_benchmark_kaggle.ipynb
 robust_flower/                          Solver, operators, metrics, data, and model loading
 scripts/                                Minimal data and checkpoint preparation

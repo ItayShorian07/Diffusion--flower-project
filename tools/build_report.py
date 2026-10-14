@@ -101,6 +101,13 @@ def repeat_header(row) -> None:
     properties.append(node)
 
 
+def prevent_row_split(row) -> None:
+    properties = row._tr.get_or_add_trPr()
+    node = OxmlElement("w:cantSplit")
+    node.set(qn("w:val"), "true")
+    properties.append(node)
+
+
 def add_table(
     doc: Document,
     headers: list[str],
@@ -113,6 +120,7 @@ def add_table(
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
     repeat_header(table.rows[0])
+    prevent_row_split(table.rows[0])
     for cell, label, width in zip(table.rows[0].cells, headers, widths):
         cell.width = Inches(width)
         cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
@@ -127,6 +135,7 @@ def add_table(
         set_run_font(run, size=font_size, color="FFFFFF")
     for row_index, values in enumerate(rows):
         cells = table.add_row().cells
+        prevent_row_split(table.rows[-1])
         for column_index, (cell, value, width) in enumerate(zip(cells, values, widths)):
             cell.width = Inches(width)
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
@@ -331,7 +340,7 @@ def main() -> None:
     )
     metadata = doc.add_paragraph()
     metadata.paragraph_format.space_before = Pt(26)
-    set_run_font(metadata.add_run("Project report\nItay Shorian\n13 October 2026"), size=10.8, color=MID_GRAY)
+    set_run_font(metadata.add_run("Project report\nItay Shorian\n14 October 2026"), size=10.8, color=MID_GRAY)
     scope = doc.add_paragraph()
     scope.paragraph_format.space_before = Pt(140)
     set_run_font(
@@ -348,7 +357,8 @@ def main() -> None:
         "changes only the standard deviation supplied to FLOWER while holding each measurement, degradation operator, mask or kernel, "
         "model, and random trajectory fixed. The benchmark evaluates five ratios from 0.5 to 1.5 on 20 fixed images from each of the "
         "paper's CelebA and AFHQ-Cat 100-image test pools and covers denoising, deblurring, super-resolution, random inpainting, and box "
-        "inpainting. The original model and solver remain unchanged. The largest mean absolute paired PSNR response occurs for "
+        "inpainting. No new learned model or noise-estimation update is introduced: the released Flower1-OT checkpoints and FLOWER update "
+        "equations are retained. The largest mean absolute response of the paired PSNR curve occurs for "
         f"{DATASET_LABELS[selected_dataset]} {TASK_LABELS[selected_task].lower()} at {setting_scores[most_sensitive]:.2f} dB, while the "
         f"smallest occurs for {DATASET_LABELS[least_sensitive[0]]} {TASK_LABELS[least_sensitive[1]].lower()} at "
         f"{setting_scores[least_sensitive]:.2f} dB. The results therefore quantify where FLOWER needs an accurate noise scale and where "
@@ -432,6 +442,7 @@ def main() -> None:
         "the reported Flower1-OT reconstruction setting with gamma equal to zero."
     )
 
+    doc.add_page_break()
     doc.add_heading("Experimental design", level=1)
     add_table(
         doc,
@@ -463,6 +474,13 @@ def main() -> None:
     doc.add_paragraph(
         "CelebA uses 100 FLOWER steps for every task. AFHQ-Cat uses 100 steps for denoising and box inpainting, 200 for random inpainting, "
         "and 500 for deblurring and super-resolution, matching the public Flower1-OT scripts. The selected images remain fixed across all tasks."
+    )
+    doc.add_paragraph(
+        "Implementation fidelity. The released optimal-transport checkpoints, preprocessing, task parameters, FLOWER-1 update, and metric "
+        "conventions are retained. For the five structured linear operators in this benchmark, the Gaussian refinement is evaluated with "
+        "operator-specific closed forms. Each closed form solves the same normal equation as the paper's proximal Gaussian mean; it changes "
+        "the numerical linear-algebra implementation, not the reconstruction objective. Consequently, the paper's 100-image means are used "
+        "only as a contextual scale check, while all mismatch claims use paired comparisons inside this experiment."
     )
     add_equation(doc, "delta-psnr.png", 5.9)
 
@@ -511,18 +529,46 @@ def main() -> None:
         "pool. The paper column is therefore contextual and not an exact sample-matched replication target."
     ).style = "Caption"
 
+    best_ratio_rows: list[list[str]] = []
+    for dataset in DATASET_LABELS:
+        for task in TASK_LABELS:
+            candidates = [lookup[(dataset, task, ratio)] for ratio in (0.5, 0.75, 1.0, 1.25, 1.5)]
+            best = max(candidates, key=lambda row: float(row["psnr_mean"]))
+            best_ratio_rows.append(
+                [
+                    DATASET_LABELS[dataset],
+                    TASK_LABELS[task],
+                    f"{float(best['assumed_to_true_sigma']):g}",
+                    f"{float(best['psnr_delta_vs_correct_mean']):+.2f}",
+                    f"{float(best['ssim_delta_vs_correct_mean']):+.3f}",
+                    f"{float(best['lpips_delta_vs_correct_mean']):+.3f}",
+                ]
+            )
+    add_table(
+        doc,
+        ["Dataset", "Task", "Best sigma ratio", "Delta PSNR", "Delta SSIM", "Delta LPIPS"],
+        best_ratio_rows,
+        [0.85, 1.55, 0.95, 0.9, 0.9, 0.9],
+        font_size=8.0,
+    )
+    doc.add_paragraph(
+        "Table 2  Empirically best tested ratio for each dataset-task pair. Deltas are paired against ratio 1.0; positive PSNR and SSIM "
+        "and negative LPIPS indicate improvement. A best ratio different from 1.0 does not estimate the true noise; it shows that finite-model "
+        "and discretization error can make deliberate likelihood reweighting score better on this sample."
+    ).style = "Caption"
+
     doc.add_heading("Final reconstruction evidence", level=2)
     add_picture(
         doc,
         FIGURES / "figure2_celeba_qualitative.png",
         6.85,
-        "Figure 2  CelebA final reconstructions for the most and least sensitive tasks under the five assumed noise scales.",
+        "Figure 2  CelebA final reconstructions under the five assumed noise scales. Top row: denoising; bottom row: random inpainting.",
     )
     add_picture(
         doc,
         FIGURES / "figure3_afhq_qualitative.png",
         6.85,
-        "Figure 3  AFHQ-Cat final reconstructions using the same predeclared selection rule.",
+        "Figure 3  AFHQ-Cat final reconstructions using the same predeclared selection rule. Top row: denoising; bottom row: random inpainting.",
     )
     doc.add_paragraph(
         "The qualitative rows use one image chosen before results were examined. Within each dataset, the plotted tasks are selected by the "
@@ -580,12 +626,28 @@ def main() -> None:
         f"compared with {statistics.mean(over_deltas):+.2f} dB over the two overestimated ratios. This aggregate describes directionality but "
         "does not replace the task-level curves, because inverse operators constrain different image subspaces."
     )
+    add_bullet(
+        doc,
+        "Moderate underestimation is not uniformly harmful: at ratio 0.5, super-resolution improves by +0.42 dB on CelebA and +0.47 dB "
+        "on AFHQ-Cat, with SSIM moving upward and LPIPS downward in both cases.",
+    )
+    add_bullet(
+        doc,
+        "AFHQ-Cat denoising peaks at ratio 0.75 (+0.35 dB PSNR, +0.011 SSIM, and -0.050 LPIPS), but stronger underestimation at ratio 0.5 "
+        "reverses the result to -1.25 dB. The response is therefore nonlinear as well as asymmetric.",
+    )
+    add_bullet(
+        doc,
+        "Random inpainting is almost invariant over the tested range: its mean absolute paired PSNR response is 0.02 dB on CelebA and "
+        "0.03 dB on AFHQ-Cat.",
+    )
     doc.add_paragraph(
         "The project supports a practical conclusion: correct noise calibration matters most for the settings with the steepest paired curves. "
         "A flat curve indicates tolerance within the tested range, while an asymmetric curve identifies whether conservative or aggressive noise "
         "assumptions are more damaging. These claims apply to the released Flower1-OT models, the tested noise levels, and the fixed 20-image samples."
     )
 
+    doc.add_page_break()
     doc.add_heading("Limitations", level=1)
     add_bullet(doc, "Twenty images reduce compute cost but give wider confidence intervals than the paper's 100-image tables.")
     add_bullet(doc, "The project tests isotropic Gaussian noise-scale mismatch and does not test an incorrect covariance shape.")
@@ -596,8 +658,8 @@ def main() -> None:
     doc.add_heading("Reproducibility", level=1)
     doc.add_paragraph(
         "The repository records the random image selection, measurements, solver seeds, masks, task parameters, paper step counts, raw metrics, "
-        "paired deltas, confidence intervals, selection rules for qualitative figures, and all five figure builders. The Colab notebook stores "
-        "results in Google Drive and resumes completed cases after a disconnect."
+        "paired deltas, confidence intervals, selection rules for qualitative figures, and all five figure builders. The completed run was "
+        "executed as a Kaggle background version on Tesla T4 GPUs; its packaged output was imported without modifying the numeric results."
     )
     add_table(
         doc,
@@ -609,7 +671,7 @@ def main() -> None:
             ["Paired results", "artifacts/experiments/main/metrics_with_deltas.csv"],
             ["Aggregate results", "artifacts/experiments/main/summary.csv"],
             ["Figures", "artifacts/figures/figure1 through figure5"],
-            ["GPU workflow", "notebooks/run_full_benchmark_colab.ipynb"],
+            ["GPU workflow", "notebooks/run_full_benchmark_kaggle.ipynb"],
         ],
         [1.55, 5.3],
         font_size=8.8,

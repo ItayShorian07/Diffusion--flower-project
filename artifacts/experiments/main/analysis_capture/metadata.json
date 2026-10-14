@@ -1,0 +1,28 @@
+{
+  "selection_rule": "setting with highest mean absolute paired PSNR delta; image closest to the median image-level sensitivity",
+  "dataset": "celeba",
+  "task": "denoising",
+  "image_position": 17,
+  "paper_index": 96,
+  "image": "182734.jpg",
+  "setting_mean_absolute_psnr_delta": 1.091164650889715,
+  "image_mean_absolute_psnr_delta": 1.0405315063778824,
+  "median_image_score": 1.0552688768037584,
+  "trajectory_times": [
+    0.2,
+    0.4,
+    0.6,
+    0.8,
+    1.0
+  ],
+  "internal_times": [
+    0.25,
+    0.5,
+    0.75
+  ],
+  "internal_ratios": [
+    0.5,
+    1.0,
+    1.5
+  ]
+}

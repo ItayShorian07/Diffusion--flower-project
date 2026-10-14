@@ -39,6 +39,7 @@ const taskLabels = {
 const ratios = [0.5, 0.75, 1, 1.25, 1.5];
 const byKey = new Map(rows.map((row) => [`${row.dataset}|${row.task}|${Number(row.assumed_to_true_sigma)}`, row]));
 const rowFor = (dataset, task, ratio) => byKey.get(`${dataset}|${task}|${ratio}`);
+const chartNumber = (value) => Number(Number(value).toFixed(4));
 const sensitivity = (dataset, task) => {
   const values = ratios.filter((ratio) => ratio !== 1).map((ratio) => Math.abs(Number(rowFor(dataset, task, ratio).psnr_delta_vs_correct_mean)));
   return values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -46,6 +47,8 @@ const sensitivity = (dataset, task) => {
 const rankedSettings = datasets.flatMap((dataset) => tasks.map((task) => ({ dataset, task, value: sensitivity(dataset, task) }))).sort((a, b) => b.value - a.value);
 const mostSensitive = rankedSettings[0];
 const leastSensitive = rankedSettings[rankedSettings.length - 1];
+const celebaSrGain = Number(rowFor("celeba", "super_resolution", 0.5).psnr_delta_vs_correct_mean);
+const afhqSrGain = Number(rowFor("afhq_cat", "super_resolution", 0.5).psnr_delta_vs_correct_mean);
 
 const family = resolvePresentationFont({ fontFamily: "Aptos" });
 const presentation = Presentation.create({ slideSize: { width: 1280, height: 720 } });
@@ -190,7 +193,7 @@ function addResultsTable(slide, dataset, left) {
   textBox(slide, "FLOWER Under Measurement\nNoise Scale Mismatch", 72, 112, 680, 176, { fontSize: 51, bold: true, color: C.white });
   textBox(slide, "A paired GPU benchmark across five inverse problems and two image domains", 76, 316, 620, 84, { fontSize: 23, color: "#D5E7EF" });
   textBox(slide, "1,000 reconstructions   PSNR   SSIM   LPIPS", 76, 472, 610, 40, { fontSize: 18, bold: true, color: C.cyan });
-  textBox(slide, "Itay Shorian   13 October 2026", 76, 626, 500, 28, { fontSize: 15, color: "#B9CCD6" });
+  textBox(slide, "Itay Shorian   14 October 2026", 76, 626, 500, 28, { fontSize: 15, color: "#B9CCD6" });
   notes(slide, "The project measures how the original FLOWER solver responds when the Gaussian measurement-noise standard deviation supplied during reconstruction is wrong.", [
     "FLOWER paper: https://openreview.net/forum?id=QGd34p02mI",
     "Official code: https://github.com/mehrsapo/Flower",
@@ -247,7 +250,7 @@ function addResultsTable(slide, dataset, left) {
   for (let datasetIndex = 0; datasetIndex < datasets.length; datasetIndex += 1) {
     const dataset = datasets[datasetIndex];
     const top = 150 + datasetIndex * 230;
-    textBox(slide, datasetLabels[dataset], 64, top + 62, 120, 40, { fontSize: 22, bold: true, color: C.blue, alignment: "center" });
+    textBox(slide, datasetLabels[dataset], 50, top + 62, 140, 40, { fontSize: 20, bold: true, color: C.blue, alignment: "center" });
     for (let taskIndex = 0; taskIndex < tasks.length; taskIndex += 1) {
       const task = tasks[taskIndex];
       const dir = await qualitativeDir(dataset, task);
@@ -303,21 +306,23 @@ function addResultsTable(slide, dataset, left) {
 function addDeltaChartSlide(dataset, slideNumber) {
   const slide = presentation.slides.add();
   header(slide, `${datasetLabels[dataset]} paired PSNR response`, slideNumber);
-  const allValues = tasks.flatMap((task) => ratios.map((ratio) => Number(rowFor(dataset, task, ratio).psnr_delta_vs_correct_mean)));
-  const bound = Math.max(1, Math.ceil(Math.max(...allValues.map(Math.abs))));
+  const allValues = tasks.flatMap((task) => ratios.map((ratio) => chartNumber(rowFor(dataset, task, ratio).psnr_delta_vs_correct_mean)));
+  const bound = Math.max(1, Math.ceil(Math.max(...allValues.map(Math.abs)) * 2) / 2);
   const chart = styleChart(slide.charts.add("line", {
     position: { left: 70, top: 140, width: 820, height: 470 },
     categories: ratios.map((ratio) => `${ratio}`),
     series: tasks.map((task, index) => ({
       name: taskLabels[task],
-      values: ratios.map((ratio) => Number(rowFor(dataset, task, ratio).psnr_delta_vs_correct_mean)),
+      values: ratios.map((ratio) => chartNumber(rowFor(dataset, task, ratio).psnr_delta_vs_correct_mean)),
       line: { style: "solid", fill: taskColors[index], width: 3 },
       marker: { symbol: "circle", size: 7 },
     })),
     hasLegend: true,
+    lineOptions: { grouping: "standard", smooth: false, varyColors: false },
     legend: { position: "bottom", textStyle: { typeface: family, fontSize: 11, fill: C.muted } },
     xAxis: {
       title: { text: "Assumed sigma divided by true sigma", textStyle: { typeface: family, fontSize: 13, fill: C.muted } },
+      position: "bottom",
       textStyle: { typeface: family, fontSize: 12, fill: C.muted },
       majorGridlines: null,
     },
@@ -325,7 +330,7 @@ function addDeltaChartSlide(dataset, slideNumber) {
       title: { text: "Paired delta PSNR in dB", textStyle: { typeface: family, fontSize: 13, fill: C.muted } },
       min: -bound,
       max: bound,
-      majorUnit: Math.max(0.5, Math.ceil(bound / 4)),
+      majorUnit: 0.5,
       numberFormatCode: "0.0",
       textStyle: { typeface: family, fontSize: 12, fill: C.muted },
       majorGridlines: { style: "solid", fill: C.grid, width: 1 },
@@ -361,7 +366,7 @@ addDeltaChartSlide("afhq_cat", 7);
   const slide = presentation.slides.add();
   header(slide, "CelebA final reconstructions", 9);
   await addImage(slide, "artifacts/figures/figure2_celeba_qualitative.png", { left: 58, top: 128, width: 1164, height: 470 }, "CelebA reconstructions for the most and least sensitive tasks");
-  textBox(slide, "One image was selected before examining results. The two tasks follow the highest and lowest sensitivity rule.", 142, 612, 996, 42, { fontSize: 18, color: C.muted, alignment: "center" });
+  textBox(slide, "Top row: denoising (most sensitive). Bottom row: random inpainting (least sensitive). The image was selected before examining results.", 142, 612, 996, 42, { fontSize: 18, color: C.muted, alignment: "center" });
   footer(slide);
   notes(slide, "Read each row from the same ground truth and measurement through all five assumed noise ratios.", ["Generated figure: artifacts/figures/figure2_celeba_qualitative.png"]);
 }
@@ -371,7 +376,7 @@ addDeltaChartSlide("afhq_cat", 7);
   const slide = presentation.slides.add();
   header(slide, "AFHQ-Cat final reconstructions", 10);
   await addImage(slide, "artifacts/figures/figure3_afhq_qualitative.png", { left: 58, top: 128, width: 1164, height: 470 }, "AFHQ-Cat reconstructions for the most and least sensitive tasks");
-  textBox(slide, "The same visual test checks whether the mismatch pattern extends beyond aligned human faces.", 142, 612, 996, 42, { fontSize: 18, color: C.muted, alignment: "center" });
+  textBox(slide, "Top row: denoising (most sensitive). Bottom row: random inpainting (least sensitive). The same selection rule is used across domains.", 142, 612, 996, 42, { fontSize: 18, color: C.muted, alignment: "center" });
   footer(slide);
   notes(slide, "The AFHQ-Cat row uses the same predeclared qualitative image position and task-selection rule as CelebA.", ["Generated figure: artifacts/figures/figure3_afhq_qualitative.png"]);
 }
@@ -381,6 +386,11 @@ addDeltaChartSlide("afhq_cat", 7);
   const slide = presentation.slides.add();
   header(slide, "Noise mismatch changes the reconstruction trajectory", 11);
   await addImage(slide, "artifacts/figures/figure4_trajectory.png", { left: 196, top: 118, width: 888, height: 526 }, "FLOWER trajectories for five noise ratios at five flow times");
+  textBox(slide, "Rows", 82, 210, 220, 28, { fontSize: 16, bold: true, color: C.blue, alignment: "center" });
+  textBox(slide, "0.5x sigma\n0.75x sigma\n1.0x sigma\n1.25x sigma\n1.5x sigma", 82, 250, 220, 230, { fontSize: 19, bold: true, color: C.navy, alignment: "center" });
+  rect(slide, 972, 242, 238, 188, C.pale, C.grid, 14);
+  textBox(slide, "Controlled comparison", 994, 258, 194, 26, { fontSize: 15, bold: true, color: C.blue, alignment: "center" });
+  textBox(slide, "Every row shares the same source-noise sequence. Visible separation is caused by the assumed sigma and its downstream effects.", 994, 296, 194, 116, { fontSize: 16, color: C.navy, alignment: "center" });
   footer(slide);
   notes(slide, "The setting has the highest mean absolute paired PSNR response. Its displayed image is closest to median image-level sensitivity, which avoids selecting an extreme failure.", ["Selection metadata: artifacts/experiments/main/analysis_capture/metadata.json", "Generated figure: artifacts/figures/figure4_trajectory.png"]);
 }
@@ -398,27 +408,29 @@ addDeltaChartSlide("afhq_cat", 7);
 // Slide 13
 {
   const slide = presentation.slides.add();
-  header(slide, "Sensitivity depends strongly on the inverse problem", 13);
+  header(slide, "Mismatch sensitivity is task-specific and asymmetric", 13);
   const topSettings = rankedSettings.slice(0, 6).reverse();
   const chart = styleChart(slide.charts.add("bar", {
     position: { left: 66, top: 146, width: 650, height: 450 },
     categories: topSettings.map((item) => `${datasetLabels[item.dataset]} ${taskLabels[item.task]}`),
-    series: [{ name: "Mean absolute paired PSNR response", values: topSettings.map((item) => item.value), fill: C.blue }],
+    series: [{ name: "Mean absolute paired PSNR response", values: topSettings.map((item) => chartNumber(item.value)), fill: C.blue }],
     barOptions: { direction: "bar", grouping: "clustered" },
     hasLegend: false,
     dataLabels: { showValue: true, position: "outEnd", numberFormatCode: "0.00" },
     xAxis: { title: { text: "Mean absolute delta PSNR in dB", textStyle: { typeface: family, fontSize: 13, fill: C.muted } }, textStyle: { typeface: family, fontSize: 11, fill: C.muted }, majorGridlines: { style: "solid", fill: C.grid, width: 1 } },
     yAxis: { textStyle: { typeface: family, fontSize: 11, fill: C.muted }, majorGridlines: null },
   }));
-  textBox(slide, "Highest response", 780, 154, 390, 28, { fontSize: 16, bold: true, color: C.coral });
-  textBox(slide, `${datasetLabels[mostSensitive.dataset]} ${taskLabels[mostSensitive.task]}`, 780, 190, 390, 54, { fontSize: 27, bold: true, color: C.navy });
-  textBox(slide, `${mostSensitive.value.toFixed(2)} dB mean absolute paired change`, 780, 248, 390, 40, { fontSize: 18, color: C.muted });
-  textBox(slide, "Main conclusion", 780, 340, 390, 28, { fontSize: 16, bold: true, color: C.green });
-  textBox(slide, "Noise calibration matters most where the response curve is steep. Flat curves indicate tolerance within the tested range.", 780, 378, 390, 118, { fontSize: 22, bold: true, color: C.navy });
-  textBox(slide, "Evidence boundary", 780, 534, 390, 24, { fontSize: 15, bold: true, color: C.purple });
-  textBox(slide, "The claims apply to the released Flower1-OT models, five tested ratios, and fixed 20-image samples.", 780, 566, 390, 70, { fontSize: 17, color: C.muted });
+  textBox(slide, "Highest response", 780, 146, 390, 24, { fontSize: 15, bold: true, color: C.coral });
+  textBox(slide, `${datasetLabels[mostSensitive.dataset]} ${taskLabels[mostSensitive.task]}   ${mostSensitive.value.toFixed(2)} dB`, 780, 176, 390, 42, { fontSize: 23, bold: true, color: C.navy });
+  textBox(slide, "Most tolerant", 780, 242, 390, 24, { fontSize: 15, bold: true, color: C.green });
+  textBox(slide, `${datasetLabels[leastSensitive.dataset]} ${taskLabels[leastSensitive.task]}   ${leastSensitive.value.toFixed(2)} dB`, 780, 272, 390, 42, { fontSize: 23, bold: true, color: C.navy });
+  rect(slide, 772, 338, 414, 130, C.warm, C.grid, 14);
+  textBox(slide, "Underestimation can help", 798, 350, 362, 26, { fontSize: 16, bold: true, color: C.purple, alignment: "center" });
+  textBox(slide, `At 0.5x sigma, super-resolution gains ${celebaSrGain.toFixed(2)} dB on CelebA and ${afhqSrGain.toFixed(2)} dB on AFHQ-Cat.`, 800, 382, 358, 72, { fontSize: 19, bold: true, color: C.navy, alignment: "center" });
+  textBox(slide, "Evidence boundary", 780, 510, 390, 24, { fontSize: 15, bold: true, color: C.purple });
+  textBox(slide, "The claims apply to released Flower1-OT checkpoints, five tested ratios, and fixed 20-image samples. No additional model was trained.", 780, 540, 390, 92, { fontSize: 16, color: C.muted });
   footer(slide, "Full tables, confidence intervals, mathematical derivations, and limitations are in the report");
-  notes(slide, "The ranking averages the absolute paired PSNR response across the four mismatched ratios. The report also discusses directionality, uncertainty, and limitations.", ["Data: artifacts/experiments/main/summary.csv", "Report: artifacts/report/flower-noise-scale-mismatch-report.docx"]);
+  notes(slide, "The ranking averages the absolute paired PSNR curve response across the four mismatched ratios. Overestimation is consistently harmful here, while moderate underestimation improves super-resolution and several AFHQ-Cat settings. The report gives the paired confidence intervals and cross-metric evidence.", ["Data: artifacts/experiments/main/summary.csv", "Report: artifacts/report/flower-noise-scale-mismatch-report.docx"]);
 }
 
 const candidatePath = path.join(BUILD_DIR, "candidate-v1.pptx");
