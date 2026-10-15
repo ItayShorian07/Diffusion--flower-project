@@ -60,7 +60,7 @@ The evaluation uses the public FLOWER conventions for PSNR, SSIM, and LPIPS. The
 \mathrm{PSNR}_i(r)-\mathrm{PSNR}_i(1).
 \]
 
-The plotting script creates exactly five figures:
+The original Kaggle plotting script creates five benchmark-export figures:
 
 1. Mean paired PSNR change with 95 percent confidence intervals for every task and dataset.
 2. CelebA final reconstructions for the most and least sensitive tasks.
@@ -70,6 +70,8 @@ The plotting script creates exactly five figures:
 
 The full 50-row results table contains both datasets, five tasks, and five ratios. The analysis case uses the setting with the largest mean absolute paired PSNR change and the image closest to the median image-level sensitivity.
 
+The redesigned academic figures are in [`artifacts/figures/publication/`](artifacts/figures/publication/). They include separate PSNR, SSIM, and LPIPS response plots with labeled axes and approximate paired 95% confidence intervals, a task-by-ratio map, all five tasks in both qualitative image grids, trajectory and internal-state panels, and five task-specific metric comparisons. See the [deliverables guide](artifacts/README.md) for the complete index.
+
 ## Completed results
 
 The Kaggle run completed all 1,000 reconstructions on Tesla T4 GPUs. The main findings are:
@@ -77,17 +79,28 @@ The Kaggle run completed all 1,000 reconstructions on Tesla T4 GPUs. The main fi
 - CelebA denoising is the most sensitive setting, with a 1.05 dB mean absolute response of the paired PSNR curve across the four mismatched ratios.
 - CelebA random inpainting is the least sensitive setting at 0.02 dB; AFHQ-Cat random inpainting is similarly flat at 0.03 dB.
 - Noise overestimation reduces mean PSNR in every tested dataset-task setting.
-- Moderate underestimation can compensate for model or discretization error. At a 0.5 standard-deviation ratio, super-resolution improves by 0.42 dB on CelebA and 0.47 dB on AFHQ-Cat, with consistent SSIM and LPIPS movement.
+- At a 0.5 standard-deviation ratio, super-resolution improves by 0.42 dB on CelebA and 0.47 dB on AFHQ-Cat, with consistent SSIM and LPIPS movement. Compensation for approximation or discretization error is a possible explanation, not a mechanism isolated by the experiment.
 - AFHQ-Cat denoising is nonlinear: ratio 0.75 improves PSNR by 0.35 dB, but ratio 0.5 reduces it by 1.25 dB.
 
 These findings describe robustness of the released Flower1-OT checkpoints on the fixed 20-image samples. They do not introduce a noise estimator or a newly trained model.
 
-Final deliverables are stored in:
+The current English deliverables are stored in:
 
-- `artifacts/report/flower-noise-scale-mismatch-report.docx`
-- `artifacts/presentation/flower-noise-scale-mismatch.pptx`
-- `artifacts/figures/`
+- [Academic report PDF](artifacts/report/robust-flower-report.pdf)
+- [Editable results presentation](artifacts/presentation/robust-flower-results.pptx)
+- [Presentation PDF](artifacts/presentation/robust-flower-results.pdf)
+- [Problem statement](artifacts/problem_statement.md)
+- `artifacts/figures/publication/`
 - `artifacts/experiments/main/`
+
+All 1,000 numerical measurements are preserved. Saved PNGs cover the fixed qualitative examples and selected trajectories, not every numerical row. The October 15 redesign requires no new GPU experiments. Earlier report, slide, and figure versions remain under their original filenames.
+
+To rebuild the redesigned figures and report from the existing data:
+
+```bash
+.venv/bin/python tools/redesign_figures.py
+python3 tools/build_academic_report.py
+```
 
 ## Run on Kaggle
 

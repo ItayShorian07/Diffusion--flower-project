@@ -1,0 +1,13 @@
+{
+  "source": "artifacts/experiments/main",
+  "source_csv_sha256": {
+    "summary.csv": "1068e22d57ce822ed358d91d0cc03cf25ea32bc84af70560af56a1fba8b5b217",
+    "metrics_with_deltas.csv": "c30fbec59ba12315ede0255f8240e7d549738b7836eba08569b3648f8670daa9",
+    "metrics.csv": "021827f85134af4a7dbe5b455ab8b5d3abe1632b792cd3cadca06525cb8c69e8"
+  },
+  "sample_count_per_group": 20,
+  "reconstruction_count": 1000,
+  "ci_method": "mean +/- 1.96 * sample SD / sqrt(20), paired per image",
+  "generator": "tools/redesign_figures.py",
+  "inference_performed": false
+}

@@ -1,0 +1,430 @@
+\documentclass[10pt,letterpaper]{article}
+\usepackage[margin=0.78in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern,amsmath,amssymb,amsthm,graphicx,booktabs,array,longtable,float,placeins,microtype}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage[table]{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\definecolor{control}{RGB}{239,243,250}
+\setlength{\parskip}{3pt}
+\setlength{\parindent}{1em}
+\setlength{\textfloatsep}{13pt plus 2pt minus 2pt}
+\setlength{\floatsep}{10pt}
+\setlength{\abovedisplayskip}{8pt}
+\setlength{\belowdisplayskip}{8pt}
+\renewcommand{\arraystretch}{1.18}
+\renewcommand{\topfraction}{.92}
+\renewcommand{\bottomfraction}{.9}
+\renewcommand{\textfraction}{.08}
+\renewcommand{\floatpagefraction}{.75}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\sa}{\sigma_{\mathrm a}}
+\newcommand{\st}{\sigma_{\mathrm{true}}}
+\newcommand{\xhat}{\widehat{x}_1}
+\newcommand{\flower}{\textsc{Flower}}
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+\graphicspath{{../build/redesign/figure-pdf/}}
+\title{\vspace{-1.0cm}\Large Robust FLOWER Under Noise Model Mismatch\\[4pt]\large A Review and Controlled Reconstruction Study}
+\author{Itay Shorian\\\small Generative Learning and Diffusion Models}
+\date{\small October 2026}
+\begin{document}
+\maketitle
+\vspace{-1em}
+\begin{abstract}
+\noindent
+FLOWER uses a pretrained flow-matching prior to reconstruct an image from a degraded measurement. Its measurement-refinement step depends explicitly on the assumed noise variance, making calibration of the noise level an important practical question. We review the method and its main mathematical arguments, then examine how reconstruction quality changes when the supplied Gaussian noise standard deviation is incorrect. The study uses 20 fixed images from each of the CelebA and AFHQ-Cat paper benchmark pools, five inverse problems, and five assumed-to-true standard-deviation ratios, for 1,000 reconstructions. Paired comparisons use the same measurement and source-noise draws at every ratio. Denoising is the most sensitive task, whereas random inpainting is nearly flat over the tested range. Overestimation lowers mean PSNR in all ten dataset--task settings. Underestimation produces task-dependent behavior: it improves super-resolution in both datasets, but severe underestimation degrades denoising. PSNR, SSIM, and LPIPS reveal both agreement and perceptual trade-offs. These observations show that robustness depends on the forward operator, the actual noise level, and the evaluation metric.
+\end{abstract}
+
+\section{Introduction}
+An inverse problem asks us to recover an unknown clean image from incomplete or noisy observations. The measurement may discard pixels, reduce spatial resolution, or blur image structure. A useful reconstruction must therefore balance agreement with the observation against knowledge of what a plausible image looks like. In a probabilistic formulation, this balance is expressed by a likelihood and an image prior.
+
+Pourya, El Rawas, and Unser introduce \flower{} as a flow-matching solver for linear inverse problems~\cite{flower}. A velocity network supplies an image prior, and a measurement-aware correction incorporates the acquisition model. The method is attractive because its three-step iteration admits both a proximal-optimization interpretation and an approximate Bayesian interpretation. The latter depends on assumptions about the learned velocity, the noise model, and the source--target coupling.
+
+The noise standard deviation is not merely a descriptive input. It determines the weight of the measurement term in every refinement. In practice, a sensor specification or an estimated noise level can be inaccurate. Our question is therefore: \emph{How much does FLOWER's reconstruction quality change when the assumed noise standard deviation differs from the value used to generate the measurement?} We study controlled scale errors and evaluate the resulting images using PSNR, SSIM, and LPIPS.
+
+The report first explains the paper's core mathematical ideas. It then presents the experimental protocol, quantitative and visual results, and an interpretation of which effects can be explained by the refinement equation. The comparison that isolates noise mismatch is always against the correctly specified reconstruction of the same image. Published 100-image averages serve as context, not as the control for this paired experiment.
+
+\section{Background and Related Work}
+\subsection{Bayesian linear inverse problems}
+Let $x\in\R^d$ be a clean image and $y\in\R^m$ an observed measurement. The linear Gaussian model is
+\begin{equation}
+ y=Hx+n,\qquad n\sim\N(0,\st^2 I),
+ \label{eq:model}
+\end{equation}
+where $H:\R^d\to\R^m$ describes the degradation. The likelihood satisfies
+\begin{equation}
+ p(y\mid x)\propto\exp\!\left(-\frac{\|Hx-y\|_2^2}{2\st^2}\right),
+ \qquad p(x\mid y)\propto p(y\mid x)p(x).
+\end{equation}
+The maximum a posteriori (MAP) estimator minimizes the negative log posterior:
+\begin{equation}
+ x_{\mathrm{MAP}}\in\arg\min_x\left\{
+ \frac{\|Hx-y\|_2^2}{2\st^2}-\log p(x)\right\}.
+\end{equation}
+MAP estimation, the posterior mean, and posterior sampling solve different statistical tasks. In particular, the posterior mean minimizes expected squared error, whereas a posterior sample can preserve perceptual diversity. Consequently, better PSNR does not by itself establish more accurate posterior sampling.
+
+\subsection{Flow matching}
+A continuous flow transports an easy-to-sample source distribution $p_0$ to an image distribution $p_1$ through $\dot x_t=v_\theta(x_t,t)$. For a straight conditional path,
+\begin{equation}
+ X_t=(1-t)X_0+tX_1,\qquad \frac{dX_t}{dt}=X_1-X_0,
+ \label{eq:path}
+\end{equation}
+flow matching trains the velocity with the regression objective
+\begin{equation}
+ \mathcal L_{\mathrm{CFM}}(\theta)=
+ \E_{t,(X_0,X_1)\sim\pi}
+ \bigl[\|v_\theta((1-t)X_0+tX_1,t)-(X_1-X_0)\|_2^2\bigr].
+ \label{eq:cfm}
+\end{equation}
+Here $t\sim\mathcal U[0,1]$ and $\pi$ is a coupling of the source and image distributions. Conditional flow matching avoids requiring direct access to the marginal velocity field~\cite{fm}. Independent coupling and minibatch optimal-transport coupling induce different training paths. This distinction matters when interpreting FLOWER's theory.
+
+\subsection{Proximal refinement and related solvers}
+For a proper lower-semicontinuous convex function $f$, the proximal operator is
+\begin{equation}
+ \operatorname{prox}_{\lambda f}(z)
+ =\arg\min_x\left\{f(x)+\frac{1}{2\lambda}\|x-z\|_2^2\right\}.
+ \label{eq:prox}
+\end{equation}
+The quadratic term keeps the solution close to $z$, while $f$ enforces the desired property. Plug-and-play methods combine such data-consistency operations with learned image priors. PnP-Flow applies this perspective to flow matching~\cite{pnpflow}. FLOWER shares the alternation between a prior-driven prediction and a measurement correction, but derives its iteration through an approximate conditional-sampling construction.
+
+The paper also relates FLOWER to diffusion and flow inverse solvers. DPS applies a likelihood-gradient correction to a generative trajectory. The $\Pi$GDM approximation models the clean endpoint conditioned on the current state by a Gaussian, a device FLOWER also uses. DDS and DiffPIR incorporate proximal-style data updates, while DAPS uses conditional sampling with an inner Langevin procedure. In the flow setting, OT-ODE, D-Flow, and Flow-Priors provide alternative ways to impose measurement consistency. These comparisons motivate FLOWER's design; our experiments concentrate on sensitivity of its own measurement refinement rather than re-ranking these solvers.
+
+\section{The FLOWER Method}
+\subsection{Step 1: Estimate the clean destination}
+At time $t$, FLOWER predicts the endpoint that the current state would reach under the learned velocity:
+\begin{equation}
+ \xhat(x_t)=x_t+(1-t)v_\theta(x_t,t).
+ \label{eq:destination}
+\end{equation}
+This is a prediction of the clean destination at $t=1$, not the next state at $t+\Delta t$.
+
+\begin{proposition}[Conditional destination, following the paper]
+If $v_\theta$ attains the population optimum of the regression in Equation~\eqref{eq:cfm}, then
+\begin{equation}
+ \xhat(x_t)=\E[X_1\mid X_t=x_t].
+\end{equation}
+\end{proposition}
+\begin{proof}
+Squared-error regression has the conditional mean as its optimum, so $v^*(x_t,t)=\E[X_1-X_0\mid X_t=x_t]$. Equation~\eqref{eq:path} gives the identity $X_1=X_t+(1-t)(X_1-X_0)$. Taking conditional expectations on both sides proves the claim.
+\end{proof}
+The identity is exact under the optimal-velocity assumption. A finite learned network gives an approximation. The statement also does not make the entire conditional endpoint distribution Gaussian.
+
+\subsection{Step 2: Refine the destination using the measurement}
+FLOWER approximates the unknown endpoint conditional by
+\begin{equation}
+ \widetilde p(x_1\mid x_t)=\N(\xhat(x_t),\nu_t^2 I),
+ \qquad \nu_t=\frac{1-t}{\sqrt{t^2+(1-t)^2}}.
+ \label{eq:gaussian}
+\end{equation}
+The variance schedule decreases toward zero as $t\to1$. Under independent standard-Gaussian endpoints, this schedule is the exact conditional variance; for natural images it is an approximation, as discussed in Appendix~\ref{app:variance}.
+
+Writing $\sa$ for the noise level supplied to the solver, the assumed likelihood is $\N(Hx_1,\sa^2I)$. Multiplying it by Equation~\eqref{eq:gaussian} yields a Gaussian endpoint posterior with
+\begin{align}
+ A_t&=\nu_t^{-2}I+\sa^{-2}H^\mathsf{T}H,&
+ \Sigma_t&=A_t^{-1},\label{eq:precision}\\
+ \mu_t&=A_t^{-1}\bigl(\nu_t^{-2}\xhat+\sa^{-2}H^\mathsf{T}y\bigr).
+ \label{eq:mean}
+\end{align}
+\begin{proof}[Gaussian refinement and proximal equivalence]
+The negative log of the product, up to a constant, is
+\begin{equation}
+ Q_t(x)=\frac{\|Hx-y\|_2^2}{2\sa^2}
+       +\frac{\|x-\xhat\|_2^2}{2\nu_t^2}
+       =\tfrac12x^\mathsf{T}A_tx-b_t^\mathsf{T}x+c,
+ \label{eq:objective}
+\end{equation}
+where $b_t=\nu_t^{-2}\xhat+\sa^{-2}H^\mathsf{T}y$. Completing the square gives mean $A_t^{-1}b_t$ and covariance $A_t^{-1}$. The positive-definite matrix $A_t$ also makes the minimizer unique. Setting $\nabla Q_t(x)=0$ recovers Equation~\eqref{eq:mean}. Comparing Equation~\eqref{eq:objective} with the definition of the proximal operator gives
+\begin{equation}
+ \mu_t=\operatorname{prox}_{\nu_t^2 F_y}(\xhat),
+ \qquad F_y(x)=\frac{\|Hx-y\|_2^2}{2\sa^2}.
+\end{equation}
+\end{proof}
+The general method forms $\widetilde x_1=\mu_t+\gamma\kappa_t$ with $\kappa_t\sim\N(0,\Sigma_t)$. The parameter $\gamma$ controls whether endpoint uncertainty is sampled. The image-reconstruction configuration used here follows the paper's Flower1-OT setting with $\gamma=0$, so the refined endpoint is $\mu_t$. This omits endpoint perturbation but does not remove the fresh source noise in the next step.
+
+\subsection{Step 3: Advance along the flow path}
+With $\Delta t=1/N$, the update is
+\begin{equation}
+ x_{t+\Delta t}=(t+\Delta t)\widetilde x_1+(1-t-\Delta t)\epsilon,
+ \qquad \epsilon\sim\N(0,I),
+ \label{eq:progress}
+\end{equation}
+where a new $\epsilon$ is drawn at each iteration. Its coefficient shrinks as the trajectory approaches the clean endpoint. A noisy intermediate state therefore need not be a poor reconstruction: it serves as an input to the velocity model at the next flow time.
+
+The paper motivates this construction by ancestral sampling. If the current conditional marginal and the transition kernel are correct, the law of total probability gives
+\begin{equation}
+ p(x_{t+\Delta t}\mid y)=\int p(x_{t+\Delta t}\mid x_t,y)p(x_t\mid y)\,dx_t.
+ \label{eq:ancestral}
+\end{equation}
+Induction then propagates the conditional marginals to $t=1$. In practice, the Gaussian approximation and the learned velocity replace ideal quantities. The paper's Bayesian argument also invokes an independent source--target coupling and sampling of endpoint uncertainty. The OT checkpoint and $\gamma=0$ restoration setting should therefore be understood through the practical reconstruction procedure and its proximal interpretation; the results below do not establish exact posterior sampling.
+
+\subsection{Why an incorrect noise level changes reconstruction}
+Let $r=\sa/\st$. Equation~\eqref{eq:objective} shows that the assumed measurement precision is $r^{-2}$ times the true precision. The tested ratios have the following meanings.
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+Standard-deviation ratio $r$ & 0.50 & 0.75 & 1.00 & 1.25 & 1.50\\
+Variance ratio $r^2$ & 0.25 & 0.5625 & 1.00 & 1.5625 & 2.25\\
+Relative likelihood precision $r^{-2}$ & 4.00 & 1.78 & 1.00 & 0.64 & 0.44\\
+\bottomrule
+\end{tabular}
+\end{center}
+Thus, $r=0.5$ means half the true standard deviation and one quarter of the true variance. It multiplies the likelihood precision by four. Equal-looking deviations on the standard-deviation axis are not symmetric changes in precision.
+
+For denoising ($H=I$), Equation~\eqref{eq:mean} becomes
+\begin{equation}
+ \mu_t=w_t y+(1-w_t)\xhat,\qquad
+ w_t=\frac{\nu_t^2}{\nu_t^2+\sa^2},\qquad
+ \frac{\partial w_t}{\partial\sa}
+ =-\frac{2\sa\nu_t^2}{(\nu_t^2+\sa^2)^2}<0.
+ \label{eq:weight}
+\end{equation}
+For a fixed current destination, underestimation increases measurement fidelity and overestimation increases reliance on that destination. This local identity does not prove that the final PSNR must vary monotonically: future destinations depend on the changed trajectory. It does provide a useful mechanism for interpreting the experiments.
+
+\section{Research Question and Experimental Design}
+\subsection{Controlled paired experiment}
+We ask whether a misspecified noise scale produces a practically meaningful loss in reconstruction quality, how that response differs across operators, and whether all three metrics tell the same story. Measurements follow Equation~\eqref{eq:model}; the reconstruction receives $\sa=r\st$ for $r\in\{0.5,0.75,1,1.25,1.5\}$.
+
+The experiment uses 20 images selected without replacement from each of the two 100-image paper benchmark pools using selection seed 2026. The same selected images are used for every task and ratio within each dataset. CelebA images are center-cropped to 178 pixels and resized to $128\times128$; AFHQ-Cat uses $256\times256$ images. The selected filenames are recorded in the repository manifests.
+
+For each image--task pair, the experiment generates one measurement. All five reconstructions share that measurement, the forward operator, mask or blur kernel, and the sequence of source-noise draws. This pairing prevents a fresh corruption or random trajectory from confounding the effect of the supplied noise level. The experiment contains
+\begin{equation}
+ 2\text{ datasets}\times20\text{ images}\times5\text{ tasks}\times5\text{ ratios}
+ =1{,}000\text{ reconstructions}.
+\end{equation}
+Table~\ref{tab:protocol} specifies the operators and iteration counts. Noise standard deviations refer to the model's $[-1,1]$ image coordinates; converting images to $[0,1]$ halves the corresponding additive standard deviation before clipping.
+
+\begin{table}[H]\centering\small
+\caption{Experimental settings. The degradation and nonzero noise levels follow the FLOWER image benchmark. $N$ denotes the number of velocity evaluations per reconstruction.}
+\label{tab:protocol}
+\begin{tabular}{lcllrr}
+\toprule
+Task & $\st$ & CelebA operator & AFHQ-Cat operator & $N_C$ & $N_A$\\
+\midrule
+Denoising & 0.20 & Identity & Identity & 100 & 100\\
+Gaussian deblurring & 0.05 & $61^2$ kernel, $\sigma_b=1$ & $61^2$ kernel, $\sigma_b=3$ & 100 & 500\\
+Super-resolution & 0.05 & $2\times$ subsampling & $4\times$ subsampling & 100 & 500\\
+Random inpainting & 0.01 & 70\% missing & 70\% missing & 100 & 200\\
+Box inpainting & 0.05 & Central $40\times40$ box & Central $80\times80$ box & 100 & 100\\
+\bottomrule
+\end{tabular}
+\end{table}
+The implementation evaluates the published refinement equation using operator-specific closed forms: pointwise updates for identity and masks, an FFT-domain update for circular Gaussian blur, and a pointwise update on the subsampling support for super-resolution. These solve the same quadratic normal equation in Equation~\eqref{eq:mean}. The run uses the released OT checkpoints and the task-specific step counts in Table~\ref{tab:protocol}.
+
+\subsection{Metrics and uncertainty}
+PSNR measures pixel reconstruction fidelity in decibels and SSIM measures structural similarity; larger values are better. LPIPS measures distance in a learned feature representation; smaller values are better. For a metric $M$, the paired image-level difference is
+\begin{equation}
+ \Delta M_i(r)=M_i(r)-M_i(1),\qquad
+ \overline{\Delta M}(r)=\frac1{20}\sum_{i=1}^{20}\Delta M_i(r).
+ \label{eq:delta}
+\end{equation}
+The plotted error bars reproduce the stored normal-approximation intervals,
+\begin{equation}
+ \overline{\Delta M}(r)\ \pm\ 1.96\frac{s_{\Delta M}(r)}{\sqrt{20}}.
+ \label{eq:ci}
+\end{equation}
+They describe variation across the selected images for this paired run. They are not simultaneous confidence bands, do not adjust for the many comparisons, and do not measure uncertainty across independently repeated solver seeds. At $r=1$, every paired difference is identically zero. Absolute metric values and the full 50-row summary appear in Appendix~\ref{app:full}.
+
+\section{Numerical Results}
+\subsection{Correct-noise control and the published benchmark}
+Table~\ref{tab:control} places the correctly specified control beside the paper's Flower1-OT results. Our 20-image averages are not expected to equal the published 100-image averages. Differences can also reflect solver random draws and implementation details. In particular, the 1.19 dB AFHQ-Cat deblurring gap is not evidence of noise mismatch because both numbers in that comparison use a correct noise level. The within-image differences in Equation~\eqref{eq:delta} provide the relevant evidence for our research question.
+
+%%CONTROL_TABLE%%
+
+\subsection{PSNR response across the five tasks}
+Figure~\ref{fig:psnr} shows a strongly task-dependent response. For CelebA denoising, $r=0.5$ reduces mean PSNR by 2.10 dB and $r=1.5$ reduces it by 1.43 dB. At $r=0.75$, mean PSNR is almost unchanged. AFHQ-Cat denoising has a different optimum within the tested grid: $r=0.75$ improves PSNR by 0.35 dB, while $r=0.5$ lowers it by 1.25 dB. A moderate decrease in the assumed noise level can therefore help, but more severe underestimation reverses the benefit.
+
+\begin{figure}[H]\centering
+\includegraphics[width=\linewidth]{01_psnr_response.pdf}
+\caption{Paired PSNR response. Each point averages the difference from the same image reconstructed with the correct noise level. Positive values improve pixel fidelity. Error bars are approximate 95\% intervals across 20 images. The shared vertical scale enables comparison between datasets.}
+\label{fig:psnr}
+\end{figure}
+
+Super-resolution behaves differently. At $r=0.5$, PSNR improves by 0.42 dB on CelebA and 0.47 dB on AFHQ-Cat. All four underestimation comparisons for super-resolution have positive mean changes, whereas both overestimation settings hurt. Random inpainting is much less responsive: even the largest tested overestimation produces only a 0.05--0.06 dB mean loss. These differences are easier to compare in the task-by-ratio map in Figure~\ref{fig:map}.
+
+Overestimation lowers mean PSNR in every dataset--task combination at both $r=1.25$ and $r=1.5$. Its effect is largest in denoising and much smaller in random and box inpainting. This is a statement about the observed mean values, not a universal ordering for every image or every metric.
+
+\begin{figure}[H]\centering
+\includegraphics[width=\linewidth]{04_psnr_mismatch_map.pdf}
+\caption{Mean PSNR differences for all mismatched settings. Blue cells indicate improvement and red cells indicate loss relative to the paired correct-noise control. Values are in dB. The map summarizes direction and magnitude; confidence intervals are available in the line plots and CSV summary.}
+\label{fig:map}
+\end{figure}
+
+To summarize sensitivity without mixing positive and negative changes, define
+\begin{equation}
+ S_{d,k}=\frac14\sum_{r\ne1}\left|\overline{\Delta\mathrm{PSNR}}_{d,k}(r)\right|.
+\end{equation}
+CelebA denoising has the largest $S_{d,k}$ at 1.05 dB, followed by AFHQ-Cat denoising at 0.93 dB. Random inpainting has the smallest values, 0.02 dB and 0.03 dB, respectively. This statistic is the mean absolute change of the aggregate curve; it differs from averaging absolute image-level changes, which can be larger when image-level effects cancel.
+
+\subsection{Structural and perceptual agreement}
+\begin{figure}[H]\centering
+\includegraphics[width=\linewidth]{02_ssim_response.pdf}
+\caption{Paired SSIM changes. Higher values indicate improved structural similarity. Severe underestimation strongly reduces SSIM in CelebA denoising, CelebA deblurring, and box inpainting in both datasets. Small PSNR changes should therefore not be interpreted as invariance of all aspects of image quality.}
+\label{fig:ssim}
+\end{figure}
+
+\begin{figure}[H]\centering
+\includegraphics[width=\linewidth]{03_lpips_response.pdf}
+\caption{Paired LPIPS changes using the paper-compatible evaluation implementation. Lower values indicate improved perceptual similarity. The favorable direction is opposite to that of PSNR and SSIM. The AFHQ-Cat denoising curve illustrates a perceptual--distortion trade-off at $r=0.5$.}
+\label{fig:lpips}
+\end{figure}
+
+The three metrics agree on the super-resolution improvement at $r=0.5$: PSNR and SSIM rise, and LPIPS falls in both datasets. For AFHQ-Cat denoising at $r=0.75$, all three metrics also improve: $\Delta\mathrm{PSNR}=+0.347$ dB, $\Delta\mathrm{SSIM}=+0.0106$, and $\Delta\mathrm{LPIPS}=-0.0496$.
+
+Agreement is not universal. At $r=0.5$, AFHQ-Cat denoising has worse PSNR and SSIM but a lower LPIPS distance. Likewise, CelebA denoising at $r=0.75$ keeps PSNR nearly unchanged while SSIM decreases and LPIPS improves. The best noise assumption therefore depends on the evaluation criterion. LPIPS alone cannot support the conclusion that every aspect of reconstruction has improved.
+
+%%HIGHLIGHT_TABLE%%
+
+\subsection{Qualitative reconstruction comparisons}
+Figures~\ref{fig:celeba} and~\ref{fig:afhq} show a fixed, preselected image from each dataset across all five tasks. Each row contains the clean reference, the displayed measurement, and reconstructions under all five assumed noise levels. Individual PSNR values appear below the reconstructed images. The blue frame identifies the correct-noise control, so both the images and their metrics can be compared without referring back to the experimental setup.
+
+For denoising, underestimation tends to preserve stronger fine-scale variation, while overestimation suppresses it. Whether the retained variation is useful detail or residual noise depends on the setting; the AFHQ-Cat metric disagreement above makes this distinction concrete. In inpainting, the observed pixels and the missing region play different roles. The refinement directly constrains observed locations, while the learned destination supplies information in the missing region. The visual examples illustrate possible behaviors, but dataset-level claims rely on the 20-image aggregates.
+
+\clearpage
+\begin{figure}[p]\centering
+\includegraphics[width=\linewidth,height=.86\textheight,keepaspectratio]{05_celeba_reconstructions.pdf}
+\caption{CelebA qualitative comparison for image 182702.jpg (fixed sample position 7). All five tasks use the same example image. Each task has its own fixed measurement, shared across the five noise assumptions. The measurement column displays $H^\mathsf{T}y$ in image coordinates, so subsampled and masked observations contain unobserved locations.}
+\label{fig:celeba}
+\end{figure}
+\clearpage
+\begin{figure}[p]\centering
+\includegraphics[width=\linewidth,height=.86\textheight,keepaspectratio]{06_afhq_cat_reconstructions.pdf}
+\caption{AFHQ-Cat qualitative comparison for image pixabay\_cat\_001348.jpg (fixed sample position 7). Values beneath reconstructions are individual-image PSNR, not dataset averages. All image rows and all ratio columns have the same interpretation as Figure~\ref{fig:celeba}.}
+\label{fig:afhq}
+\end{figure}
+\clearpage
+
+\subsection{What changes along the reconstruction trajectory}
+Figure~\ref{fig:trajectory} uses stored trajectory states for CelebA denoising. The analysis case is image 182734.jpg, selected by the saved capture procedure as the image closest to the median image-level sensitivity in the most sensitive setting. The diagnostic is illustrative rather than a separate statistical experiment. Each row changes the assumed noise ratio, and each column advances flow time. Early states contain substantial source noise. Differences become easier to see as the coefficient of that noise decreases.
+
+\begin{figure}[H]\centering
+\includegraphics[width=.87\linewidth,height=.68\textheight,keepaspectratio]{07_reconstruction_trajectory.pdf}
+\caption{Stored trajectory states for one representative CelebA denoising case. Rows vary $r$ and columns vary flow time. All rows share the same measurement and source-noise draws. These tiles show $x_t$, whereas the destination estimates in Figure~\ref{fig:internals} represent predictions of the clean endpoint.}
+\label{fig:trajectory}
+\end{figure}
+
+\begin{figure}[H]\centering
+\includegraphics[width=.85\linewidth,height=.66\textheight,keepaspectratio]{08_internal_states_t075.pdf}
+\caption{The three steps at $t=0.75$ for the same analysis image. The assumed noise level acts directly in the refinement from $\xhat$ to $\mu_t$. Differences in the first column can also arise because previous refinements have already changed the trajectory. The third column is the state at $t+0.01$, with fresh source noise. Earlier captures appear in Appendix~\ref{app:internal}.}
+\label{fig:internals}
+\end{figure}
+
+\section{Discussion}
+\subsection{Operator dependence and calibration}
+The experiment supports a conditional answer to the robustness question. FLOWER is quite insensitive to the tested scale errors in random inpainting, but denoising can lose more than 2 dB under severe underestimation. A single global claim that the solver is either robust or fragile would conceal this variation.
+
+Equation~\eqref{eq:weight} explains why the noise level matters in denoising: every pixel participates in the measurement correction, so changing its weight changes the entire image. For a binary mask, the analogous update leaves an unobserved coordinate equal to the destination estimate and applies a denoising-like blend only on the observed support. This limits the \emph{direct} influence of the likelihood scale, although the learned prior can propagate effects across later iterations.
+
+The almost-flat random-inpainting response is also associated with its much smaller true noise level, $\st=0.01$. It would be unjustified to attribute all of this robustness to the operator alone: task identity and true noise magnitude change together in this protocol. Similarly, the observed super-resolution improvements suggest that a more strongly weighted data term can compensate for imperfections of the practical reconstruction procedure, but these experiments do not isolate whether the relevant error arises from the Gaussian endpoint approximation, the learned prior, finite time discretization, or another implementation choice.
+
+\subsection{Scope and limitations of the evidence}
+The sample contains 20 images per dataset and one paired random sequence for each image--task pair. It therefore establishes behavior on a fixed, reproducible sample, with uncertainty across images, but not broad guarantees across datasets or solver seeds. The ratios cover a moderate range of positive noise assumptions, not a fully unspecified likelihood. Other corruption families and errors in the spatial covariance are outside the measured comparisons.
+
+The selected ratio that maximizes mean PSNR on these images is descriptive. Choosing it after looking at the test results is not a validated deployment rule. The paper comparison also has a different sample count, so absolute gaps should not be conflated with the effect of mismatch. The per-image paired controls, repeated images, and common random draws are essential to the interpretation.
+
+\subsection{Potential extension to nonlinear inverse problems}
+The original paper discusses replacing the linear forward map by a nonlinear $h$. Under $y=h(x)+n$, the Gaussian endpoint approximation still gives
+\begin{equation}
+ \widetilde p(x\mid x_t,y)\propto
+ \exp\!\left[-\frac{\|y-h(x)\|_2^2}{2\sa^2}
+             -\frac{\|x-\xhat\|_2^2}{2\nu_t^2}\right].
+\end{equation}
+This density is generally not Gaussian in $x$, so the closed-form linear refinement no longer applies. Its score is nevertheless available:
+\begin{equation}
+ \nabla_x\log\widetilde p(x\mid x_t,y)
+ =\sa^{-2}J_h(x)^\mathsf{T}(y-h(x))-\nu_t^{-2}(x-\xhat).
+\end{equation}
+The paper suggests using an inner sampling scheme such as Langevin dynamics. The same noise-precision dependence remains visible in this expression, but our linear experiments cannot establish the robustness of that nonlinear construction.
+
+\section{Conclusion}
+FLOWER combines a flow-based endpoint estimate, a Gaussian measurement refinement, and a noisy time-progression step. The refinement provides a direct mathematical route through which an inaccurate assumed noise level changes the reconstruction. Its Bayesian motivation is useful, but the practical OT reconstruction setting and its image-quality metrics must be distinguished from exact posterior sampling.
+
+Our paired study finds substantial task dependence. Severe underestimation harms denoising, and overestimation lowers mean PSNR in every tested dataset--task setting. Random inpainting is nearly insensitive over the tested range, while super-resolution benefits from underestimation on both datasets. PSNR, SSIM, and LPIPS sometimes agree and sometimes expose a trade-off, so a single metric does not fully describe robustness. The main empirical conclusion is that noise calibration matters most in some acquisition settings and that the physically correct noise level need not maximize every reconstruction metric for the practical solver on a finite sample.
+
+\appendix
+\section{Additional Mathematical Details}\label{app:variance}
+\subsection{The Gaussian variance schedule}
+Suppose $X_0$ and $X_1$ are independent standard Gaussians and $X_t=(1-t)X_0+tX_1$. Then $\operatorname{Cov}(X_t)=[t^2+(1-t)^2]I$ and $\operatorname{Cov}(X_1,X_t)=tI$. The Gaussian-conditioning formula gives
+\begin{align}
+ \operatorname{Cov}(X_1\mid X_t)
+ &=I-\frac{t^2}{t^2+(1-t)^2}I\\
+ &=\frac{(1-t)^2}{t^2+(1-t)^2}I=\nu_t^2I.
+\end{align}
+This establishes the stated schedule in the Gaussian special case. It does not establish isotropic conditional covariance for a natural-image distribution.
+
+\subsection{Sampling the refinement perturbation}
+Let $\epsilon_1\sim\N(0,I_d)$ and $\epsilon_2\sim\N(0,I_m)$ be independent, and define
+\begin{equation}
+ \kappa_t=\Sigma_t\bigl(\nu_t^{-1}\epsilon_1+\sa^{-1}H^\mathsf{T}\epsilon_2\bigr).
+\end{equation}
+It is a centered Gaussian with covariance
+\begin{equation}
+ \operatorname{Cov}(\kappa_t)=\Sigma_t
+ (\nu_t^{-2}I+\sa^{-2}H^\mathsf{T}H)\Sigma_t^\mathsf{T}=\Sigma_t.
+\end{equation}
+This proves the paper's reparameterization without requiring an explicit square root of $\Sigma_t$. When the algorithm uses $\gamma=0$, this particular perturbation is omitted.
+
+\subsection{Known non-isotropic Gaussian noise}
+For a known positive-definite covariance $C$, replace the likelihood quadratic by $(Hx-y)^\mathsf{T}C^{-1}(Hx-y)/2$. The same square-completion argument gives
+\begin{equation}
+ \Sigma_t=(\nu_t^{-2}I+H^\mathsf{T}C^{-1}H)^{-1},\qquad
+ \mu_t=\Sigma_t(\nu_t^{-2}\xhat+H^\mathsf{T}C^{-1}y).
+\end{equation}
+This is the generalization discussed in the paper. It clarifies the role of a covariance model without supplying evidence for covariance errors beyond the scalar scale sweep evaluated here.
+
+\section{Evaluation and Reproducibility Details}
+The numerical results reside in \texttt{artifacts/experiments/main/}. The file \texttt{metrics.csv} contains all 1,000 image-level rows, \texttt{metrics\_with\_deltas.csv} adds paired differences, and \texttt{summary.csv} contains the 50 dataset--task--ratio aggregates. Configuration and seed information are recorded in \texttt{run\_metadata.json}; the selected filenames appear under \texttt{data\_splits/}. The saved image files contain the fixed qualitative examples and the selected internal-state captures. They do not contain a PNG for every numerical row.
+
+PSNR and SSIM use clipped $[0,1]$ images. PSNR uses \texttt{skimage} with a data range of 1, and SSIM uses the PyTorch-Ignite implementation. LPIPS uses the AlexNet network and preserves the public implementation's input convention: the postprocessed images are mapped to $[-1,1]$ and the call also sets \texttt{normalize=True}. This differs from the usual LPIPS convention of either supplying $[-1,1]$ inputs without normalization or $[0,1]$ inputs with normalization. The reported LPIPS values should therefore be read as paper-code-compatible measurements, not silently substituted for values from another LPIPS preprocessing pipeline. Within this experiment the convention is identical for every ratio.
+
+The uncertainty intervals in Equation~\eqref{eq:ci} reproduce the original stored summaries. A Student-$t$ interval at $n=20$ would use a slightly larger multiplier. The visual comparisons use stored PNGs, whereas the metrics were evaluated from the reconstructed tensors before PNG quantization. Thus the CSV is the numerical source of truth. The plots in this report are generated from those completed results, with provenance hashes retained alongside the figures.
+
+\section{Complete Numerical Results}\label{app:full}
+Tables~\ref{tab:full-celeba} and~\ref{tab:full-afhq_cat} report every tested setting. Each row averages the same 20 images within its dataset. Shaded rows identify $r=1$. The PSNR change is paired per image; for SSIM and LPIPS, the paired changes and uncertainty intervals are available in the accompanying CSV.
+%%FULL_TABLES%%
+
+\clearpage
+\section{Earlier Internal States}\label{app:internal}
+\begin{figure}[H]\centering
+\includegraphics[width=.64\linewidth,height=.39\textheight,keepaspectratio]{09_internal_states_t025.pdf}
+\caption{The same three-step diagnostic at $t=0.25$. Rows compare assumed-noise ratios 0.5, 1, and 1.5. The destination, its measurement refinement, and the noisy next state have different roles and should not be ranked simply by visual smoothness.}
+\end{figure}
+\begin{figure}[H]\centering
+\includegraphics[width=.64\linewidth,height=.39\textheight,keepaspectratio]{10_internal_states_t05.pdf}
+\caption{The diagnostic at $t=0.50$. Together with Figure~\ref{fig:internals}, these captures document how the assumed measurement precision influences intermediate states at several points along the same trajectory.}
+\end{figure}
+
+\clearpage
+\section{Metric Comparisons by Inverse Problem}
+The following panels compare the two datasets within each inverse problem. Each metric uses its own vertical scale, which reveals small changes that can be hard to distinguish in the shared task overview. All values and confidence intervals are the same as in the main figures.
+\begin{figure}[H]\centering
+\includegraphics[width=\linewidth]{task_denoising.pdf}
+\caption{Denoising across all three metrics. The AFHQ-Cat perceptual improvement at $r=0.5$ contrasts with its PSNR and SSIM losses.}
+\end{figure}
+\begin{figure}[H]\centering
+\includegraphics[width=\linewidth]{task_gaussian_deblurring.pdf}
+\caption{Gaussian deblurring. Severe underestimation is much more damaging on CelebA than on AFHQ-Cat in this protocol.}
+\end{figure}
+\clearpage
+\begin{figure}[H]\centering
+\includegraphics[width=\linewidth]{task_super_resolution.pdf}
+\caption{Super-resolution. At $r=0.5$ all three metrics improve in both datasets relative to the correct-noise control.}
+\end{figure}
+\begin{figure}[H]\centering
+\includegraphics[width=\linewidth]{task_random_inpainting.pdf}
+\caption{Random inpainting. The task-specific scale makes the small nonzero responses visible. These effects should be judged by their magnitude, not only by whether an interval excludes zero.}
+\end{figure}
+\begin{figure}[H]\centering
+\includegraphics[width=\linewidth]{task_box_inpainting.pdf}
+\caption{Box inpainting. Underestimation damages SSIM and LPIPS even though aggregate PSNR changes are smaller than in denoising.}
+\end{figure}
+
+\begin{thebibliography}{9}
+\bibitem{flower} M. Pourya, B. El Rawas, and M. Unser. \emph{FLOWER: A Flow-Matching Solver for Inverse Problems}. ICLR, 2026. Paper and official code: \url{https://github.com/mehrsapo/Flower}.
+\bibitem{fm} Y. Lipman, R. T. Q. Chen, H. Ben-Hamu, M. Nickel, and M. Le. \emph{Flow Matching for Generative Modeling}. ICLR, 2023.
+\bibitem{pnpflow} S. T. Martin, A. Gagneux, P. Hagemann, and G. Steidl. \emph{PnP-Flow: Plug-and-Play Image Restoration with Flow Matching}. ICLR, 2025.
+\bibitem{project} I. Shorian. \emph{FLOWER noise-scale mismatch benchmark}. Experiment configuration, selected-image manifests, source code, and completed results, October 2026. \url{https://github.com/ItayShorian07/Diffusion--flower-project}.
+\end{thebibliography}
+\end{document}
