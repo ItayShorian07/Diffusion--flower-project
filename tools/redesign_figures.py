@@ -146,7 +146,7 @@ def image_metric(dataset,task,ratio):
 
 def qualitative(dataset,number):
     fig,axes=plt.subplots(5,7,figsize=(11.8,10.7))
-    fig.subplots_adjust(left=.125,right=.992,top=.87,bottom=.095,wspace=.09,hspace=.35)
+    fig.subplots_adjust(left=.125,right=.992,top=.82,bottom=.095,wspace=.09,hspace=.35)
     fig.suptitle(f'{NAMES[dataset]} reconstructions across all five inverse problems',y=.985,fontsize=18,fontweight='bold')
     image_id=image_metric(dataset,TASKS[0],1)['image']
     fig.text(.5,.947,f'Fixed example: {image_id}\nEach row uses the same measurement and source-noise draws',ha='center',va='top',fontsize=11,color=GRAY,linespacing=1.5)

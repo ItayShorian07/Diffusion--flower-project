@@ -1,17 +1,21 @@
 # FLOWER robustness project deliverables
 
-The current report, presentation, figures, problem statement, and completed experimental results are organized here. The October 15 redesign uses the existing results and does not run reconstruction again.
+The final report, presentation, figures, problem statement, and completed experimental results are organized here. All deliverables use the completed experiment; rebuilding them does not run reconstruction again.
 
 | Folder or file | Contents |
 |---|---|
-| `report/robust-flower-report.pdf` | English academic report with the method, mathematical arguments, protocol, all 15 redesigned figures, result tables, discussion, and conclusions |
-| `report/robust-flower-report.tex` | Generated LaTeX source; rebuild with the scripts below |
-| `presentation/robust-flower-results.pptx` | Editable 20-slide results presentation matching the supplied blue, 4:3 reference style |
-| `presentation/robust-flower-results.pdf` | PDF viewing copy of the presentation |
+| `report/FLOWER_Noise_Mismatch_Report.pdf` | Final 25-page English report: expanded derivations, 15 numbered figures, two detail continuations, result tables, discussion, and conclusions |
+| `report/FLOWER_Noise_Mismatch_Report.tex` | Editable final source; references the figures in `figures/publication/` |
+| `presentation/FLOWER_Noise_Mismatch_Presentation.pptx` | Final editable 20-slide presentation with matched crops and six native quantitative charts |
+| `presentation/FLOWER_Noise_Mismatch_Presentation.pdf` | Final PDF viewing copy of the presentation |
 | `figures/publication/` | Redesigned PNG figures, vector SVG quantitative plots, and source-data hashes |
 | `experiments/main/` | All completed numerical results and saved image outputs |
 | `problem_statement.md` | Research question, scope, experimental design, and evaluation plan |
-| `delivery/Robust_FLOWER_Project.zip` | Portable package of the current deliverables and completed results, generated locally |
+| `figures/publication/details/` | Selected detail panels continuing Figures 5–6, using the same crop across every noise ratio |
+| `delivery/FLOWER_Noise_Mismatch_Project.zip` | Current local submission bundle with final files, results, figures, sources, and code |
+| `delivery/manifest.json` | Versioned final-file hashes and validation counts |
+
+There is one final report and one final presentation. Earlier versions and their obsolete generators have been removed from the working tree. Previously committed versions remain recoverable through Git history.
 
 ## Experimental results
 
@@ -41,9 +45,27 @@ From the repository root:
 
 ```bash
 .venv/bin/python tools/redesign_figures.py
-python3 tools/build_academic_report.py
+.venv/bin/python tools/build_report_detail_crops.py
+.venv/bin/python tools/build_report.py
 ```
 
-The figure builder requires Matplotlib, NumPy, and Pillow. The report builder requires a TeX installation and reads the generated vector figure PDFs from the private build folder. Presentation authoring uses `tools/redesign_presentation.mjs`, the configured artifact runtime, and the reference Roboto Condensed font. Finalization includes native chart confidence intervals and embedded chart data.
+To compile the final report directly, run from `artifacts/report/`:
 
-The original October 14 DOCX, PPTX, and five benchmark-export figures remain available under their original filenames for comparison. The files listed above are the current version.
+```bash
+latexmk -pdf -interaction=nonstopmode -halt-on-error FLOWER_Noise_Mismatch_Report.tex
+```
+
+The Python dependencies are in `requirements-deliverables.txt`. The report builder uses the committed final LaTeX source, including the detailed derivations and the LPIPS convention in Section 4.3 and Appendix B. The two detail panels follow the full Figures 5–6 without replacing them or changing figure numbers. Numbers below crops remain full-image PSNR values.
+
+Presentation authoring uses `tools/build_presentation.mjs`, `tools/presentation_content.mjs`, the configured Codex artifact runtime, and Roboto Condensed. `FLOWER_ARTIFACT_RUNTIME` and `FLOWER_PRESENTATION_SKILL_DIR` can override the local runtime paths. The builder creates the complete current deck from the completed CSVs and saved images. It does not load an earlier deck. Native chart confidence intervals, embedded workbooks, tables, and explicit image crops are validated before export.
+
+```bash
+node tools/build_presentation.mjs
+.venv/bin/python tools/validate_and_package_deliverables.py
+```
+
+The ZIP is generated locally and intentionally not committed, since its files are already available individually in the repository. The versioned manifest documents the validated final files and source-data hashes.
+
+## Final presentation content
+
+The presentation retains the blue 4:3 design and 20-slide order. The experiment supplies deliberately incorrect assumed noise standard deviations; true measurement noise is known to the experimenter and stays fixed within each paired comparison. Slide 5 makes the controlled variables and `gamma = 0` explicit and defines paired changes before the first graph. Slides 11–15 add approximately 3× matched detail crops across every ratio and both datasets. Their numerical labels report full-image metrics. Slide 18 presents possible explanations, and slide 19 answers the research question directly.

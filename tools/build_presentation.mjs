@@ -1,469 +1,298 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { Presentation, PresentationFile } from "@oai/artifact-tool";
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
+import { spawnSync } from 'node:child_process';
+import { applyFinalPresentationContent } from './presentation_content.mjs';
 
-const ROOT = "/Users/Itays/Diffusion- flower project";
-const SKILL_DIR = "/Users/Itays/.codex/plugins/cache/openai-primary-runtime/presentations/26.904.11930/skills/presentations";
-const RUNTIME_PYTHON = "/Users/Itays/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3";
-const BUILD_DIR = path.join(ROOT, "artifacts/build/presentation");
-const STAGING_DIR = path.join(ROOT, "artifacts/build/presentation-finalizer");
-const FINAL_PPTX = path.join(ROOT, "artifacts/presentation/flower-noise-scale-mismatch.pptx");
-
-const {
-  resolvePresentationFont,
-  applyPresentationChartFont,
-  finalizePresentation,
-} = await import(pathToFileURL(path.join(SKILL_DIR, "container_tools/artifact_tool_utils.mjs")).href);
-
-await fs.mkdir(BUILD_DIR, { recursive: true });
-await fs.mkdir(STAGING_DIR, { recursive: true });
-await fs.mkdir(path.dirname(FINAL_PPTX), { recursive: true });
-
-const config = JSON.parse(await fs.readFile(path.join(ROOT, "config/robustness.json"), "utf8"));
-const summaryText = await fs.readFile(path.join(ROOT, "artifacts/experiments/main/summary.csv"), "utf8");
-const [csvHeader, ...lines] = summaryText.trim().split(/\r?\n/).map((line) => line.split(","));
-const rows = lines.map((values) => Object.fromEntries(csvHeader.map((key, index) => [key, values[index]])));
-if (rows.length !== 50) throw new Error(`Expected 50 summary rows, found ${rows.length}`);
-
-const datasets = ["celeba", "afhq_cat"];
-const datasetLabels = { celeba: "CelebA", afhq_cat: "AFHQ-Cat" };
-const tasks = ["denoising", "gaussian_deblurring", "super_resolution", "random_inpainting", "box_inpainting"];
-const taskLabels = {
-  denoising: "Denoising",
-  gaussian_deblurring: "Deblurring",
-  super_resolution: "Super-resolution",
-  random_inpainting: "Random inpainting",
-  box_inpainting: "Box inpainting",
-};
-const ratios = [0.5, 0.75, 1, 1.25, 1.5];
-const byKey = new Map(rows.map((row) => [`${row.dataset}|${row.task}|${Number(row.assumed_to_true_sigma)}`, row]));
-const rowFor = (dataset, task, ratio) => byKey.get(`${dataset}|${task}|${ratio}`);
-const chartNumber = (value) => Number(Number(value).toFixed(4));
-const sensitivity = (dataset, task) => {
-  const values = ratios.filter((ratio) => ratio !== 1).map((ratio) => Math.abs(Number(rowFor(dataset, task, ratio).psnr_delta_vs_correct_mean)));
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-};
-const rankedSettings = datasets.flatMap((dataset) => tasks.map((task) => ({ dataset, task, value: sensitivity(dataset, task) }))).sort((a, b) => b.value - a.value);
-const mostSensitive = rankedSettings[0];
-const leastSensitive = rankedSettings[rankedSettings.length - 1];
-const celebaSrGain = Number(rowFor("celeba", "super_resolution", 0.5).psnr_delta_vs_correct_mean);
-const afhqSrGain = Number(rowFor("afhq_cat", "super_resolution", 0.5).psnr_delta_vs_correct_mean);
-
-const family = resolvePresentationFont({ fontFamily: "Aptos" });
-const presentation = Presentation.create({ slideSize: { width: 1280, height: 720 } });
-
-const C = {
-  navy: "#17324D",
-  blue: "#176B87",
-  cyan: "#64CCC5",
-  coral: "#D45D4C",
-  green: "#3B8264",
-  purple: "#7758A6",
-  gold: "#C68A24",
-  ink: "#17212B",
-  muted: "#5E6974",
-  pale: "#EAF4F8",
-  warm: "#F6F1EA",
-  grid: "#D9E1E7",
-  white: "#FFFFFF",
-};
-const taskColors = [C.blue, C.gold, C.purple, C.green, C.coral];
-
-function rect(slide, left, top, width, height, fill, lineFill = "none", radius = 0) {
-  return slide.shapes.add({
-    geometry: radius ? "roundRect" : "rect",
-    position: { left, top, width, height },
-    fill,
-    line: { fill: lineFill, width: lineFill === "none" ? 0 : 1 },
-  });
+const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const RUNTIME=process.env.FLOWER_ARTIFACT_RUNTIME || '/Users/Itays/.cache/codex-runtimes/codex-primary-runtime/dependencies';
+process.env.RUNTIME_NODE_MODULES ??= path.join(RUNTIME,'node/node_modules');
+const require=createRequire(path.join(process.env.RUNTIME_NODE_MODULES,'__loader.cjs'));
+const {GlobalFonts}=require('@napi-rs/canvas');
+const artifactRequire=createRequire(require.resolve('@oai/artifact-tool'));
+const {FontLibrary}=artifactRequire('skia-canvas');
+const fontPaths=[];
+for(const suffix of ['Regular','Bold','Italic','BoldItalic']) {
+  const fontPath=`/usr/local/texlive/2025/texmf-dist/fonts/opentype/google/roboto/RobotoCondensed-${suffix}.otf`;
+  GlobalFonts.registerFromPath(fontPath,'Roboto Condensed');
+  fontPaths.push(fontPath);
+}
+FontLibrary.use('Roboto Condensed',fontPaths);
+const {Presentation,PresentationFile,FileBlob}=await import(pathToFileURL(require.resolve('@oai/artifact-tool')));
+const SKILL=process.env.FLOWER_PRESENTATION_SKILL_DIR || '/Users/Itays/.codex/plugins/cache/openai-primary-runtime/presentations/26.904.11930/skills/presentations';
+const {finalizePresentation,applyPresentationChartFont}=await import(pathToFileURL(path.join(SKILL,'container_tools/artifact_tool_utils.mjs')));
+const BUILD=path.join(ROOT,'artifacts/build/presentation');
+const OUT=path.join(ROOT,'artifacts/presentation/FLOWER_Noise_Mismatch_Presentation.pptx');
+const F='Roboto Condensed';
+const C={blue:'#303EAD',pale:'#ECEEFF',ink:'#222222',gray:'#5B616A',white:'#FFFFFF',grid:'#D5D8DF'};
+const W=1000,H=750;
+const p=Presentation.create({slideSize:{width:W,height:H}});
+const datasetNames={celeba:'CelebA',afhq_cat:'AFHQ-Cat'};
+const tasks=['denoising','gaussian_deblurring','super_resolution','random_inpainting','box_inpainting'];
+const labels=['Denoising','Gaussian deblurring','Super-resolution','Random inpainting','Box inpainting'];
+const colors=['#3155A4','#C55A25','#8B5AA6','#008477','#AD4266'];
+const ratios=[.5,.75,1,1.25,1.5];
+const source='artifacts/experiments/main';
+function parseCsv(s){const [h,...r]=s.trim().split(/\r?\n/).map(l=>l.split(','));return r.map(v=>Object.fromEntries(h.map((k,i)=>[k,v[i]])));}
+const rows=parseCsv(await fs.readFile(path.join(ROOT,source,'summary.csv'),'utf8'));
+const raw=parseCsv(await fs.readFile(path.join(ROOT,source,'metrics.csv'),'utf8'));
+const get=(d,t,r)=>rows.find(x=>x.dataset===d&&x.task===t&&Number(x.assumed_to_true_sigma)===r);
+const imageRow=(d,t,r)=>raw.find(x=>x.dataset===d&&x.task===t&&Number(x.image_position)===7&&Number(x.assumed_to_true_sigma)===r);
+const chartErrors=[];const chartOwners=[],tableOwners=[];
+await fs.mkdir(BUILD,{recursive:true});
+try { await fs.access(path.join(ROOT,'artifacts/build/report-equations/measurement.png')); }
+catch {
+ const equations=spawnSync(path.join(RUNTIME,'python/bin/python3'),[path.join(ROOT,'tools/build_equation_assets.py')],{encoding:'utf8'});
+ if(equations.status!==0)throw new Error(equations.stderr||equations.stdout);
 }
 
-function textBox(slide, text, left, top, width, height, options = {}) {
-  const shape = slide.shapes.add({
-    geometry: "textbox",
-    position: { left, top, width, height },
-    fill: options.fill ?? "none",
-    line: { fill: options.lineFill ?? "none", width: options.lineWidth ?? 0 },
-  });
-  shape.text = text;
-  shape.text.style = {
-    typeface: family,
-    fontSize: options.fontSize ?? 22,
-    bold: options.bold ?? false,
-    color: options.color ?? C.ink,
-    alignment: options.alignment ?? "left",
-    verticalAlignment: options.verticalAlignment ?? "middle",
-    autoFit: options.autoFit ?? "shrinkText",
-  };
-  return shape;
+function rect(s,x,y,w,h,fill,shadow=false,stroke='none'){
+ const o=s.shapes.add({geometry:'rect',position:{left:x,top:y,width:w,height:h},fill,line:{fill:stroke,width:stroke==='none'?0:1}});
+ if(shadow)o.shadow='2px 4px 3px #000000/25';return o;
+}
+function text(s,value,x,y,w,h,size=27,color=C.ink,bold=false,align='left'){
+ const o=s.shapes.add({geometry:'textbox',position:{left:x,top:y,width:w,height:h},fill:'none',line:{fill:'none',width:0}});
+ o.text=value;o.text.style={typeface:F,fontSize:size,color,bold,alignment:align,verticalAlignment:'middle',autoFit:'none',wrap:true};return o;
+}
+function slide(title){const s=p.slides.add();s.background.fill=C.white;rect(s,0,0,W,76,C.blue);text(s,title,35,10,930,55,39,C.white);return s;}
+function note(s,body){s.speakerNotes.textFrame.setText(body+'\n\nSources: FLOWER paper (local Flower_main.pdf); config/robustness.json; artifacts/experiments/main/metrics.csv and summary.csv.');}
+function foot(s,content){text(s,content,40,709,920,24,15,C.gray);}
+function box(s,title,body,x,y,w,h,size=27){rect(s,x,y,w,h,C.pale,true);rect(s,x,y,w,40,C.blue);text(s,title,x+13,y+3,w-26,33,27,C.white);if(body)text(s,body,x+15,y+51,w-30,h-64,size);}
+async function image(s,relative,x,y,w,h,alt){const file=path.isAbsolute(relative)?relative:path.join(ROOT,relative);s.images.add({blob:await fs.readFile(file),contentType:'image/png',position:{left:x,top:y,width:w,height:h},fit:'contain',alt});}
+async function eq(s,name,x,y,w,h){await image(s,`artifacts/build/report-equations/${name}.png`,x,y,w,h,name);}
+async function imgDir(d,t){const root=path.join(ROOT,source,'reconstructions',d,t);const names=(await fs.readdir(root)).filter(n=>n.startsWith('image_'));return path.join(root,names[0]);}
+
+function table(s,values,x,y,w,h,widths){const tab=s.tables.add({rows:values.length,columns:values[0].length,left:x,top:y,width:w,height:h,values,columnTracks:widths.map(value=>({mode:'fr',value}))});
+ tab.styleOptions={headerRow:true,bandedRows:false};tab.borders.assign({style:'solid',fill:'#D2D5E8',width:.65});
+ tab.cells.block({row:0,column:0,rowCount:values.length,columnCount:values[0].length}).assign({textStyle:{typeface:F,fontSize:21,color:C.ink},margins:{top:8,bottom:8,left:10,right:10},anchor:'middle'});
+ for(let j=0;j<values[0].length;j++)tab.getCell(0,j).fill=C.blue;
+ tab.cells.block({row:0,column:0,rowCount:1,columnCount:values[0].length}).assign({textStyle:{typeface:F,fontSize:22,color:C.white}});
+ tableOwners.push(p.slides.items.length);return tab;
 }
 
-function header(slide, title, number) {
-  slide.background.fill = C.white;
-  rect(slide, 0, 0, 1280, 9, C.blue);
-  textBox(slide, title, 66, 36, 1080, 70, { fontSize: 36, bold: true, color: C.navy });
-  textBox(slide, String(number).padStart(2, "0"), 1170, 42, 44, 26, { fontSize: 13, bold: true, color: C.muted, alignment: "right" });
+function chart(s,d,metric,x,y,w,h,{legend=true,title=true,min,max,step}={}){
+ const metricName=metric.toUpperCase();
+ const series=tasks.map((t,i)=>({name:labels[i],values:ratios.map(r=>Number(Number(get(d,t,r)[`${metric}_delta_vs_correct_mean`]).toFixed(6))),
+   line:{style:'solid',fill:colors[i],width:2.4},marker:{symbol:['circle','square','triangle','diamond','star'][i],size:6}}));
+ const c=s.charts.add('line',{position:{left:x,top:y,width:w,height:h},title:title?datasetNames[d]+' '+metricName:'Paired effect of the assumed noise level',
+  titleTextStyle:{typeface:F,fontSize:25,fill:C.ink,bold:true},categories:ratios.map(r=>r.toFixed(2)),series,hasLegend:legend,
+  lineOptions:{smooth:false,grouping:'standard'},legend:{position:'bottom',overlay:false,textStyle:{typeface:F,fontSize:17,fill:C.ink}},
+  xAxis:{title:{text:'Assumed / true standard deviation, r',textStyle:{typeface:F,fontSize:19,fill:C.ink}},position:'bottom',textStyle:{typeface:F,fontSize:18,fill:C.ink},majorGridlines:null},
+  yAxis:{title:{text:`Mean Δ${metricName}${metric==='psnr'?' (dB)':''}`,textStyle:{typeface:F,fontSize:19,fill:C.ink}},min,max,majorUnit:step,numberFormatCode:metric==='psnr'?'0.0':'0.00',textStyle:{typeface:F,fontSize:18,fill:C.ink},majorGridlines:{style:'solid',fill:C.grid,width:.7}},
+  chartFill:C.white,plotAreaFill:C.white});
+ applyPresentationChartFont(c,{fontFamily:F});
+ chartOwners.push(p.slides.items.length);
+ chartErrors.push(tasks.map(t=>ratios.map(r=>Number(get(d,t,r)[`${metric}_delta_vs_correct_ci95`]))));
+ return c;
 }
 
-function footer(slide, text = "FLOWER measurement noise scale mismatch") {
-  rect(slide, 66, 684, 1148, 1, C.grid);
-  textBox(slide, text, 66, 689, 760, 16, { fontSize: 10, color: C.muted });
-  textBox(slide, "20 CelebA + 20 AFHQ-Cat", 930, 689, 284, 16, { fontSize: 10, color: C.muted, alignment: "right" });
+// 1: the reference's minimal cover, in its original 4:3 proportions.
+{
+ const s=p.slides.add();s.background.fill=C.white;
+ rect(s,55,150,890,224,C.blue,true);
+ text(s,'Robust FLOWER Under\nNoise Model Mismatch',85,171,830,122,46,C.white,false,'center');
+ text(s,'A controlled study of reconstruction quality',88,307,824,45,28,C.white,false,'center');
+ text(s,'Itay Shorian',100,447,800,43,29,C.ink,false,'center');
+ text(s,'Generative Learning and Diffusion Models',100,531,800,38,25,C.ink,false,'center');
+ text(s,'October 2026',100,592,800,35,23,C.ink,false,'center');
+ note(s,'Study of the completed 1,000-reconstruction experiment. The noise standard-deviation ratio controls the likelihood used by FLOWER.');
 }
-
-function notes(slide, body, sources = []) {
-  const sourceText = sources.length ? `\n\nSources:\n${sources.join("\n")}` : "";
-  slide.speakerNotes.textFrame.setText(`${body}${sourceText}`);
+// 2–3: exactly two background slides on the paper.
+{
+ const s=slide('FLOWER: From a Measurement to a Clean Image');
+ box(s,'Inverse Problem','We observe a degraded, noisy image and seek the underlying clean image.',44,126,440,218,27);
+ await eq(s,'measurement',67,352,400,80);
+ box(s,'The Image Prior','A pretrained flow model predicts a clean destination from the current trajectory state.',520,126,436,218,27);
+ box(s,'Three Steps at Every Flow Time','1. Estimate the clean destination\n2. Refine it using the measurement\n3. Move to the next flow time',44,482,912,181,27);
+ foot(s,'Pourya, El Rawas and Unser, FLOWER, ICLR 2026');
+ note(s,'FLOWER combines the velocity network with a measurement-aware proximal correction. This slide summarizes the paper rather than the new robustness experiment.');
 }
-
-async function bytes(relativePath) {
-  return fs.readFile(path.join(ROOT, relativePath));
+{
+ const s=slide('The Noise Level Sets the Refinement Strength');
+ box(s,'Destination Estimate','',44,118,912,142);await eq(s,'flow-path',70,169,860,72);
+ box(s,'Measurement-Aware Refinement','',44,285,912,168);await eq(s,'proximal-objective',76,336,848,96);
+ box(s,'Interpretation','A smaller assumed σ gives more weight to the measurement.\nA larger assumed σ gives more weight to the predicted destination.',44,482,912,170,26);
+ foot(s,'The paper’s image benchmark uses Flower1-OT with γ = 0');
+ note(s,'The endpoint covariance is approximated by ν_t² I. The refinement minimizes a Gaussian negative log density. Gamma=0 uses the refined mean, while source noise is still injected during progression. The OT practical setting does not meet all assumptions of the ideal posterior-sampling argument.');
 }
-
-async function addImage(slide, relativePath, position, alt, fit = "contain") {
-  slide.images.add({
-    blob: await bytes(relativePath),
-    contentType: "image/png",
-    alt,
-    fit,
-    position,
-  });
+{
+ const s=slide('Our Research Question');
+ box(s,'Noise Calibration','How does reconstruction quality change when FLOWER receives an incorrect noise standard deviation?',44,123,912,151,31);
+ text(s,'r = σassumed / σtrue',100,300,800,53,37,C.blue,true,'center');
+ table(s,[['r','0.50','0.75','1.00','1.25','1.50'],['Variance ratio','0.25','0.5625','1.00','1.5625','2.25']],65,385,870,110,[1.65,1,1,1,1,1]);
+ box(s,'Paired Comparison','The image, measurement and source-noise draws are shared across all five ratios. We compare every result with its r = 1 control.',44,530,912,151,27);
+ note(s,'Ratios refer to standard deviation, not variance. The actual measurements are generated once. Relative likelihood precision changes by 1/r².');
 }
-
-async function qualitativeDir(dataset, task) {
-  const root = path.join(ROOT, "artifacts/experiments/main/reconstructions", dataset, task);
-  const names = (await fs.readdir(root)).filter((name) => name.startsWith("image_")).sort();
-  if (names.length !== 1) throw new Error(`Expected one qualitative directory for ${dataset}/${task}`);
-  return path.join("artifacts/experiments/main/reconstructions", dataset, task, names[0]);
+{
+ const s=slide('Experimental Design');
+ text(s,'20 fixed CelebA images + 20 fixed AFHQ-Cat images',44,104,912,48,31,C.blue,true,'center');
+ table(s,[['Inverse problem','True σ','CelebA','AFHQ-Cat'],['Denoising','0.20','Identity','Identity'],['Gaussian deblurring','0.05','61 × 61, blur σ = 1','61 × 61, blur σ = 3'],['Super-resolution','0.05','2× subsampling','4× subsampling'],['Random inpainting','0.01','70% missing','70% missing'],['Box inpainting','0.05','40 × 40 central box','80 × 80 central box']],44,181,912,324,[1.6,.6,1.6,1.6]);
+ text(s,'40 images × 5 problems × 5 ratios = 1,000 reconstructions',44,538,912,50,31,C.blue,true,'center');
+ text(s,'PSNR ↑      SSIM ↑      LPIPS ↓',44,608,912,45,31,C.ink,false,'center');
+ foot(s,'Same selected images throughout each dataset. Seed 2026. Noise σ is in model coordinates [-1, 1].');
+ note(s,'Images were selected without replacement from the paper benchmark pools. CelebA resolution 128×128, AFHQ-Cat 256×256. The full step counts and metric implementation conventions are in the report.');
 }
-
-function styleChart(chart) {
-  applyPresentationChartFont(chart, { fontFamily: family });
-  chart.chartFill = C.white;
-  chart.plotAreaFill = C.white;
-  return chart;
+for(const d of ['celeba','afhq_cat']){
+ const s=slide(`PSNR Response: ${datasetNames[d]}`);
+ chart(s,d,'psnr',38,103,924,426,{title:false,min:-2.5,max:.75,step:.5});
+ const msg=d==='celeba'?'Denoising loses 2.10 dB at r = 0.50. Super-resolution gains 0.42 dB. Random inpainting changes very little.':'Denoising improves by 0.35 dB at r = 0.75, but loses 1.25 dB at r = 0.50. Super-resolution gains 0.47 dB at r = 0.50.';
+ box(s,'Main Observation',msg,44,557,912,120,26);
+ foot(s,'Mean paired ΔPSNR vs r = 1. Higher is better. n = 20. Error bars: approximate 95% CI.');
+ note(s,'Native editable chart. Values and paired 95% normal-approximation confidence intervals come directly from summary.csv. The zero value at ratio 1 is by construction. The lines join only the five measured ratios.');
 }
-
-function addResultsTable(slide, dataset, left) {
-  const values = [["Task", "Our control", "Paper", "Difference"]];
-  for (const task of tasks) {
-    const ours = Number(rowFor(dataset, task, 1).psnr_mean);
-    const paper = Number(config.paper_flower1_ot_reference[dataset][task][0]);
-    values.push([taskLabels[task], ours.toFixed(2), paper.toFixed(2), (ours - paper).toFixed(2)]);
+for(const [metric,minimum,maximum,step,msg] of [
+ ['ssim',-.15,.05,.05,'Underestimating noise can damage structure even when PSNR changes little. Super-resolution improves in both datasets.'],
+ ['lpips',-.10,.10,.05,'At r = 0.50, AFHQ-Cat denoising improves LPIPS while PSNR and SSIM worsen. Perceptual and pixel fidelity can disagree.']]){
+ const s=slide(`${metric.toUpperCase()} Response Across Both Datasets`);
+ chart(s,'celeba',metric,27,108,467,408,{legend:false,min:minimum,max:maximum,step});
+ chart(s,'afhq_cat',metric,509,108,467,408,{legend:false,min:minimum,max:maximum,step});
+ for(let i=0;i<5;i++){const x=40+[0,158,378,576,774][i];rect(s,x,531,22,4,colors[i]);text(s,labels[i],x+29,517,[129,190,170,180,120][i],30,17.5);}
+ box(s,'What the Metric Adds',msg,44,570,912,119,25);
+ foot(s,`Mean paired change vs r = 1. ${metric==='lpips'?'Lower':'Higher'} is better. n = 20. Error bars: approximate 95% CI.`);
+ note(s,'Both panels share the same vertical scale. LPIPS uses the public implementation convention, documented explicitly in the report appendix. Absolute LPIPS values should not be compared with a differently normalized pipeline.');
+}
+{
+ const s=slide('All Tasks: Mean PSNR Change (dB)');
+ text(s,'Cells compare a mismatched reconstruction with its r = 1 control',44,99,912,40,27,C.gray,false,'center');
+ for(const [idx,d] of ['celeba','afhq_cat'].entries()){
+  const x=44+idx*470;text(s,datasetNames[d],x,153,442,38,30,C.blue,true,'center');
+  const values=[['Task','0.50','0.75','1.25','1.50'],...tasks.map((t,i)=>[labels[i].replace('Gaussian ','').replace('Random inpainting','Random inp.').replace('Box inpainting','Box inp.'),...[.5,.75,1.25,1.5].map(r=>{const v=Number(get(d,t,r).psnr_delta_vs_correct_mean);return Math.abs(v)<.005?'0.00':(v>0?'+':'')+v.toFixed(2);})])];
+  const tab=table(s,values,x,208,442,329,[1.9,1,1,1,1]);
+  tab.cells.block({row:0,column:0,rowCount:6,columnCount:5}).assign({textStyle:{typeface:F,fontSize:18,color:C.ink},margins:{top:8,bottom:8,left:5,right:5},anchor:'middle'});
+  tab.cells.block({row:0,column:0,rowCount:1,columnCount:5}).assign({textStyle:{typeface:F,fontSize:19,color:C.white}});
+  for(let i=1;i<6;i++)for(let j=1;j<5;j++){
+   const v=Number(get(d,tasks[i-1],[.5,.75,1.25,1.5][j-1]).psnr_delta_vs_correct_mean);
+   tab.getCell(i,j).fill=v<-.1?'#F6D9DC':v>.1?'#DDEAF5':'#F7F7FA';
   }
-  const table = slide.tables.add({
-    rows: values.length,
-    columns: 4,
-    left,
-    top: 178,
-    width: 548,
-    height: 350,
-    columnTracks: [
-      { mode: "fr", value: 1.8 },
-      { mode: "fr", value: 1.0 },
-      { mode: "fr", value: 0.9 },
-      { mode: "fr", value: 0.9 },
-    ],
-    values,
-  });
-  table.styleOptions = { headerRow: true, bandedRows: true };
-  table.borders.assign({ style: "solid", fill: C.grid, width: 1 });
-  for (let column = 0; column < 4; column += 1) table.getCell(0, column).fill = C.navy;
-  table.cells.block({ row: 0, column: 0, rowCount: 1, columnCount: 4 }).assign({
-    textStyle: { typeface: family, fontSize: 14, bold: true, color: C.white },
-    margins: { top: 8, right: 8, bottom: 8, left: 8 },
-  });
-  table.cells.block({ row: 1, column: 0, rowCount: 5, columnCount: 4 }).assign({
-    textStyle: { typeface: family, fontSize: 13, color: C.ink },
-    margins: { top: 8, right: 7, bottom: 8, left: 7 },
-    anchor: "middle",
-  });
-  textBox(slide, datasetLabels[dataset], left, 138, 548, 32, { fontSize: 22, bold: true, color: C.blue, alignment: "center" });
+ }
+ box(s,'Reading the Table','Positive values mean better PSNR. Overestimation lowers the mean in every tested dataset–task setting.',44,580,912,112,27);
+ foot(s,'Each cell averages 20 paired image differences. The r = 1 column is zero by definition.');
+ note(s,'Editable data tables. Background colors indicate sign and magnitude qualitatively, while exact numbers are printed. Unlike the report heatmap, this slide does not claim a continuous color scale.');
 }
-
-// Slide 1
-{
-  const slide = presentation.slides.add();
-  slide.background.fill = C.navy;
-  const celebDir = await qualitativeDir("celeba", "denoising");
-  const afhqDir = await qualitativeDir("afhq_cat", "denoising");
-  await addImage(slide, path.join(celebDir, "ground_truth.png"), { left: 820, top: 96, width: 280, height: 280 }, "Selected CelebA image", "cover");
-  await addImage(slide, path.join(afhqDir, "ground_truth.png"), { left: 950, top: 330, width: 250, height: 250 }, "Selected AFHQ-Cat image", "cover");
-  textBox(slide, "FLOWER Under Measurement\nNoise Scale Mismatch", 72, 112, 680, 176, { fontSize: 51, bold: true, color: C.white });
-  textBox(slide, "A paired GPU benchmark across five inverse problems and two image domains", 76, 316, 620, 84, { fontSize: 23, color: "#D5E7EF" });
-  textBox(slide, "1,000 reconstructions   PSNR   SSIM   LPIPS", 76, 472, 610, 40, { fontSize: 18, bold: true, color: C.cyan });
-  textBox(slide, "Itay Shorian   14 October 2026", 76, 626, 500, 28, { fontSize: 15, color: "#B9CCD6" });
-  notes(slide, "The project measures how the original FLOWER solver responds when the Gaussian measurement-noise standard deviation supplied during reconstruction is wrong.", [
-    "FLOWER paper: https://openreview.net/forum?id=QGd34p02mI",
-    "Official code: https://github.com/mehrsapo/Flower",
-  ]);
-}
-
-// Slide 2
-{
-  const slide = presentation.slides.add();
-  header(slide, "Research question and paired comparison", 2);
-  await addImage(slide, "artifacts/build/report-equations/measurement.png", { left: 88, top: 138, width: 600, height: 90 }, "Gaussian measurement model");
-  textBox(slide, "The measurement is generated once", 112, 248, 490, 38, { fontSize: 24, bold: true, color: C.navy });
-  textBox(slide, "The operator, noise realization, mask or kernel, model weights, and FLOWER source-noise trajectory remain fixed.", 112, 292, 490, 118, { fontSize: 20, color: C.muted });
-  textBox(slide, "Only the assumed standard deviation changes", 112, 438, 490, 38, { fontSize: 24, bold: true, color: C.coral });
-  textBox(slide, "0.5     0.75     1.0     1.25     1.5", 100, 492, 520, 54, { fontSize: 29, bold: true, color: C.blue, alignment: "center" });
-  rect(slide, 716, 142, 474, 410, C.pale, C.grid, 18);
-  textBox(slide, "Paired statistic", 760, 172, 390, 32, { fontSize: 17, bold: true, color: C.blue, alignment: "center" });
-  await addImage(slide, "artifacts/build/report-equations/delta-psnr.png", { left: 760, top: 220, width: 390, height: 88 }, "Paired PSNR change equation");
-  textBox(slide, "Ratio 1.0 is the correctly specified control for the same image and measurement.", 770, 330, 370, 82, { fontSize: 21, bold: true, color: C.navy, alignment: "center" });
-  textBox(slide, "The project evaluates the released model and reconstruction rule. It does not train another model.", 770, 438, 370, 76, { fontSize: 18, color: C.muted, alignment: "center" });
-  footer(slide);
-  notes(slide, "Pairing isolates the assumed noise scale from changes caused by another measurement draw or another stochastic trajectory.", ["Protocol: config/robustness.json"]);
-}
-
-// Slide 3
-{
-  const slide = presentation.slides.add();
-  header(slide, "FLOWER uses three steps at every flow time", 3);
-  const steps = [
-    ["1", "Prior destination", "The velocity network predicts x-hat-1.", C.blue],
-    ["2", "Measurement refinement", "The assumed sigma weights the likelihood.", C.coral],
-    ["3", "Time progression", "The refined destination advances the trajectory.", C.green],
-  ];
-  steps.forEach(([number, label, body, color], index) => {
-    const left = 72 + index * 402;
-    textBox(slide, number, left, 150, 58, 58, { fontSize: 34, bold: true, color, alignment: "center" });
-    textBox(slide, label, left + 70, 148, 300, 40, { fontSize: 23, bold: true, color: C.navy });
-    textBox(slide, body, left + 70, 192, 300, 64, { fontSize: 17, color: C.muted });
-  });
-  await addImage(slide, "artifacts/build/report-equations/flow-path.png", { left: 98, top: 290, width: 690, height: 86 }, "FLOWER path and destination equation");
-  await addImage(slide, "artifacts/build/report-equations/proximal-objective.png", { left: 98, top: 410, width: 690, height: 102 }, "Measurement refinement objective");
-  rect(slide, 844, 290, 346, 230, C.warm, C.grid, 16);
-  textBox(slide, "Where mismatch acts", 878, 310, 278, 30, { fontSize: 19, bold: true, color: C.coral, alignment: "center" });
-  textBox(slide, "A smaller assumed sigma strengthens the data term. A larger value gives the learned prior more influence.", 878, 354, 278, 128, { fontSize: 21, bold: true, color: C.navy, alignment: "center" });
-  textBox(slide, "The report gives short proofs for the conditional destination, Gaussian refinement, proximal equivalence, and ancestral transition.", 138, 570, 1004, 58, { fontSize: 19, color: C.muted, alignment: "center" });
-  footer(slide);
-  notes(slide, "Sigma appears directly in Step 2. Later Step 1 predictions can also differ because previous refinements changed the trajectory state.", ["FLOWER paper, Propositions 1 to 3: https://openreview.net/forum?id=QGd34p02mI"]);
-}
-
-// Slide 4
-{
-  const slide = presentation.slides.add();
-  header(slide, "Ten settings cover five operators and two domains", 4);
-  for (let datasetIndex = 0; datasetIndex < datasets.length; datasetIndex += 1) {
-    const dataset = datasets[datasetIndex];
-    const top = 150 + datasetIndex * 230;
-    textBox(slide, datasetLabels[dataset], 50, top + 62, 140, 40, { fontSize: 20, bold: true, color: C.blue, alignment: "center" });
-    for (let taskIndex = 0; taskIndex < tasks.length; taskIndex += 1) {
-      const task = tasks[taskIndex];
-      const dir = await qualitativeDir(dataset, task);
-      const left = 205 + taskIndex * 198;
-      await addImage(slide, path.join(dir, "measurement.png"), { left, top, width: 158, height: 158 }, `${datasetLabels[dataset]} ${taskLabels[task]} measurement`, "cover");
-      textBox(slide, taskLabels[task], left - 8, top + 164, 174, 34, { fontSize: 13, bold: true, color: C.ink, alignment: "center" });
-    }
+// One qualitative slide per inverse problem, all five ratios and both datasets.
+const visualMessages=[
+ 'Underestimation preserves stronger fine-scale variation. Overestimation smooths it. The metrics determine whether this is detail or residual noise.',
+ 'The two datasets respond differently to underestimation. Kernel width and image content differ between them.',
+ 'Both datasets gain PSNR and SSIM and reduce LPIPS at r = 0.50 in the 20-image average.',
+ 'The reconstruction changes only slightly over this range. This task also has the smallest true noise level, σ = 0.01.',
+ 'The data term acts on observed pixels. The prior supplies the missing central region, and later iterations couple both regions.'
+];
+for(let k=0;k<tasks.length;k++){
+ const t=tasks[k];const s=slide(`Visual Comparison: ${labels[k]}`);
+ const titles=['Ground truth','Measurement','r = 0.50','r = 0.75','r = 1.00','r = 1.25','r = 1.50'];
+ const cols=['ground_truth.png','measurement.png',...ratios.map(r=>`sigma_ratio_${r}.png`)];
+ for(let j=0;j<7;j++)text(s,titles[j],45+j*132,111,126,34,18,j===4?C.blue:C.ink,j===4,'center');
+ for(const [di,d] of ['celeba','afhq_cat'].entries()){
+  const top=177+di*213;
+  text(s,datasetNames[d],45,top-31,900,29,24,C.blue,true);
+  const dir=await imgDir(d,t);
+  for(let j=0;j<7;j++){
+   if(j===4)rect(s,43+j*132,top-2,130,130,C.blue);
+   await image(s,path.join(dir,cols[j]),45+j*132,top,126,126,`${datasetNames[d]} ${labels[k]} ${titles[j]}`);
+   if(j>=2){const r=imageRow(d,t,ratios[j-2]);text(s,`${Number(r.psnr).toFixed(2)} / ${Number(r.ssim).toFixed(3)}\n${Number(r.lpips).toFixed(3)}`,45+j*132,top+132,126,40,17,C.ink,false,'center');}
   }
-  textBox(slide, "The same 20 selected images pass through every task within a dataset", 210, 608, 940, 40, { fontSize: 20, bold: true, color: C.navy, alignment: "center" });
-  footer(slide);
-  notes(slide, "Measurements shown here use the fixed qualitative image in each dataset. The task-specific sigma and operator parameters match the public paper setup.", ["Generated measurements: artifacts/experiments/main/reconstructions"]);
+ }
+ box(s,'Observation',visualMessages[k],44,586,912,109,24);
+ foot(s,'Numbers: PSNR (dB) / SSIM, then LPIPS. Fixed examples; blue frame = correct noise. Measurement = Hᵀy.');
+ note(s,'Displayed images are the saved qualitative examples: CelebA 182702.jpg and AFHQ pixabay_cat_001348.jpg. The metrics beneath tiles refer to these individual images. Text about aggregate behavior uses summary.csv. The same measurement is used within each row.');
 }
-
-// Slide 5
 {
-  const slide = presentation.slides.add();
-  header(slide, "Task parameters match the public FLOWER benchmark", 5);
-  const values = [
-    ["Task", "True sigma", "CelebA", "AFHQ-Cat"],
-    ["Denoising", "0.20", "Identity, 100 steps", "Identity, 100 steps"],
-    ["Deblurring", "0.05", "Blur sigma 1, 100 steps", "Blur sigma 3, 500 steps"],
-    ["Super-resolution", "0.05", "2x, 100 steps", "4x, 500 steps"],
-    ["Random inpainting", "0.01", "70% missing, 100 steps", "70% missing, 200 steps"],
-    ["Box inpainting", "0.05", "40 x 40, 100 steps", "80 x 80, 100 steps"],
-  ];
-  const table = slide.tables.add({
-    rows: values.length,
-    columns: 4,
-    left: 86,
-    top: 150,
-    width: 1108,
-    height: 390,
-    columnTracks: [{ mode: "fr", value: 1.35 }, { mode: "fr", value: 0.8 }, { mode: "fr", value: 1.8 }, { mode: "fr", value: 1.8 }],
-    values,
-  });
-  table.styleOptions = { headerRow: true, bandedRows: true };
-  table.borders.assign({ style: "solid", fill: C.grid, width: 1 });
-  for (let column = 0; column < 4; column += 1) table.getCell(0, column).fill = C.navy;
-  table.cells.block({ row: 0, column: 0, rowCount: 1, columnCount: 4 }).assign({
-    textStyle: { typeface: family, fontSize: 17, bold: true, color: C.white },
-    margins: { top: 10, right: 10, bottom: 10, left: 10 },
-  });
-  table.cells.block({ row: 1, column: 0, rowCount: 5, columnCount: 4 }).assign({
-    textStyle: { typeface: family, fontSize: 16, color: C.ink },
-    margins: { top: 9, right: 10, bottom: 9, left: 10 },
-    anchor: "middle",
-  });
-  textBox(slide, "20 images x 5 ratios x 5 tasks x 2 datasets = 1,000 reconstructions", 126, 574, 1028, 52, { fontSize: 24, bold: true, color: C.blue, alignment: "center" });
-  footer(slide);
-  notes(slide, "All five task noise levels are nonzero, so the same ratio sweep is meaningful for every operator.", ["FLOWER paper Section 5.1: https://openreview.net/forum?id=QGd34p02mI", "Configuration: config/robustness.json"]);
+ const s=slide('How Mismatch Changes the Trajectory');
+ const times=[.2,.4,.6,.8,1];const shown=[.5,1,1.5];
+ text(s,'CelebA denoising, image 182734.jpg',45,98,910,36,26,C.gray);
+ text(s,'Flow time t',137,143,790,30,24,C.blue,false,'center');
+ for(let j=0;j<5;j++)text(s,`t = ${times[j].toFixed(1)}`,138+j*163,178,143,32,22,C.ink,false,'center');
+ for(let i=0;i<3;i++){const top=222+i*145;text(s,`r = ${shown[i].toFixed(2)}`,25,top+44,102,34,24,i===1?C.blue:C.ink,i===1);for(let j=0;j<5;j++){
+  if(i===1)rect(s,138+j*163-2,top-2,137,137,C.blue);
+  await image(s,`${source}/analysis_capture/trajectory/ratio_${shown[i]}/t_${times[j]}.png`,138+j*163,top,133,133,`Trajectory ratio ${shown[i]} time ${times[j]}`);
+ }}
+ foot(s,'Rows share measurement and source-noise draws. Final column: reconstruction. All five ratios are in the report.');
+ note(s,'Stored diagnostic trajectory. The representative image is selected by the capture script using median image-level sensitivity. Early states are noisy by design. The ratio axis and the time axis are different experimental dimensions.');
 }
-
-function addDeltaChartSlide(dataset, slideNumber) {
-  const slide = presentation.slides.add();
-  header(slide, `${datasetLabels[dataset]} paired PSNR response`, slideNumber);
-  const allValues = tasks.flatMap((task) => ratios.map((ratio) => chartNumber(rowFor(dataset, task, ratio).psnr_delta_vs_correct_mean)));
-  const bound = Math.max(1, Math.ceil(Math.max(...allValues.map(Math.abs)) * 2) / 2);
-  const chart = styleChart(slide.charts.add("line", {
-    position: { left: 70, top: 140, width: 820, height: 470 },
-    categories: ratios.map((ratio) => `${ratio}`),
-    series: tasks.map((task, index) => ({
-      name: taskLabels[task],
-      values: ratios.map((ratio) => chartNumber(rowFor(dataset, task, ratio).psnr_delta_vs_correct_mean)),
-      line: { style: "solid", fill: taskColors[index], width: 3 },
-      marker: { symbol: "circle", size: 7 },
-    })),
-    hasLegend: true,
-    lineOptions: { grouping: "standard", smooth: false, varyColors: false },
-    legend: { position: "bottom", textStyle: { typeface: family, fontSize: 11, fill: C.muted } },
-    xAxis: {
-      title: { text: "Assumed sigma divided by true sigma", textStyle: { typeface: family, fontSize: 13, fill: C.muted } },
-      position: "bottom",
-      textStyle: { typeface: family, fontSize: 12, fill: C.muted },
-      majorGridlines: null,
-    },
-    yAxis: {
-      title: { text: "Paired delta PSNR in dB", textStyle: { typeface: family, fontSize: 13, fill: C.muted } },
-      min: -bound,
-      max: bound,
-      majorUnit: 0.5,
-      numberFormatCode: "0.0",
-      textStyle: { typeface: family, fontSize: 12, fill: C.muted },
-      majorGridlines: { style: "solid", fill: C.grid, width: 1 },
-    },
-  }));
-  const ordered = tasks.map((task) => ({ task, value: sensitivity(dataset, task) })).sort((a, b) => b.value - a.value);
-  textBox(slide, "Most sensitive task", 930, 164, 260, 24, { fontSize: 15, bold: true, color: C.coral, alignment: "center" });
-  textBox(slide, taskLabels[ordered[0].task], 930, 198, 260, 56, { fontSize: 25, bold: true, color: C.navy, alignment: "center" });
-  textBox(slide, `${ordered[0].value.toFixed(2)} dB mean absolute response`, 930, 260, 260, 48, { fontSize: 17, color: C.muted, alignment: "center" });
-  textBox(slide, "Least sensitive task", 930, 364, 260, 24, { fontSize: 15, bold: true, color: C.green, alignment: "center" });
-  textBox(slide, taskLabels[ordered[ordered.length - 1].task], 930, 398, 260, 56, { fontSize: 25, bold: true, color: C.navy, alignment: "center" });
-  textBox(slide, `${ordered[ordered.length - 1].value.toFixed(2)} dB mean absolute response`, 930, 460, 260, 48, { fontSize: 17, color: C.muted, alignment: "center" });
-  footer(slide);
-  notes(slide, "Each line uses the same 20 images and paired control. The report includes 95 percent confidence intervals and the full metric table.", ["Data: artifacts/experiments/main/summary.csv"]);
-}
-
-addDeltaChartSlide("celeba", 6);
-addDeltaChartSlide("afhq_cat", 7);
-
-// Slide 8
 {
-  const slide = presentation.slides.add();
-  header(slide, "Control results and the paper reference", 8);
-  addResultsTable(slide, "celeba", 72);
-  addResultsTable(slide, "afhq_cat", 660);
-  textBox(slide, "Our control uses 20 fixed images from each paper benchmark pool. The paper values average 100 images, so the differences are contextual rather than exact replication errors.", 132, 568, 1016, 62, { fontSize: 18, color: C.muted, alignment: "center" });
-  footer(slide);
-  notes(slide, "The ratio 1.0 control provides a sanity check against the published Flower1-OT scale. The image samples differ in size, so paired conclusions rely on within-project deltas.", ["FLOWER Tables 1 and 2: https://openreview.net/forum?id=QGd34p02mI", "Data: artifacts/experiments/main/summary.csv"]);
+ const s=slide('Inside the Three Steps at t = 0.75');
+ const states=['destination','refined','trajectory'];const heads=['Destination estimate','Measurement refinement','Next trajectory state'];
+ for(let j=0;j<3;j++)text(s,heads[j],145+j*273,116,252,35,25,C.blue,false,'center');
+ for(let i=0;i<3;i++){const r=[.5,1,1.5][i],top=176+i*163;text(s,`r = ${r.toFixed(2)}`,26,top+49,105,40,25,i===1?C.blue:C.ink,i===1);for(let j=0;j<3;j++){
+   const x=197+j*273;if(i===1)rect(s,x-2,top-2,151,151,C.blue);
+   await image(s,`${source}/analysis_capture/internals/ratio_${r}/t_0.75/${states[j]}.png`,x,top,147,147,`${heads[j]} ratio ${r}`);
+ }}
+ foot(s,'CelebA denoising, image 182734.jpg. Step 2 uses σ directly. Step 3 adds source noise and advances time.');
+ note(s,'The first-column differences can be induced by earlier refinements. Do not claim the mismatch only affects the second column: it acts directly there, and indirectly changes later network predictions.');
 }
-
-// Slide 9
 {
-  const slide = presentation.slides.add();
-  header(slide, "CelebA final reconstructions", 9);
-  await addImage(slide, "artifacts/figures/figure2_celeba_qualitative.png", { left: 58, top: 128, width: 1164, height: 470 }, "CelebA reconstructions for the most and least sensitive tasks");
-  textBox(slide, "Top row: denoising (most sensitive). Bottom row: random inpainting (least sensitive). The image was selected before examining results.", 142, 612, 996, 42, { fontSize: 18, color: C.muted, alignment: "center" });
-  footer(slide);
-  notes(slide, "Read each row from the same ground truth and measurement through all five assumed noise ratios.", ["Generated figure: artifacts/figures/figure2_celeba_qualitative.png"]);
+ const s=slide('Interpreting the Evidence');
+ box(s,'Why the Forward Operator Matters','Denoising changes the measurement weight at every pixel. Masked and subsampled problems constrain only observed locations directly.',44,122,912,154,28);
+ box(s,'Why Correct Noise Need Not Maximize PSNR','The practical solver uses a learned velocity and an approximate endpoint distribution. A different data weight can compensate for their errors on a finite sample.',44,304,912,170,28);
+ box(s,'Limits of the Comparison','20 images per dataset and one paired seed sequence per image–task pair. Paper results use 100 images. Confidence intervals summarize image variation.',44,502,912,165,28);
+ foot(s,'These results establish sensitivity on the tested sample; they do not identify a universal optimal noise ratio.');
+ note(s,'Mechanistic explanations are interpretations of the refinement equation. The experiment does not isolate the cause of the super-resolution improvement. Task and true noise level vary together, so operator dependence is not a pure operator-only ablation.');
 }
-
-// Slide 10
 {
-  const slide = presentation.slides.add();
-  header(slide, "AFHQ-Cat final reconstructions", 10);
-  await addImage(slide, "artifacts/figures/figure3_afhq_qualitative.png", { left: 58, top: 128, width: 1164, height: 470 }, "AFHQ-Cat reconstructions for the most and least sensitive tasks");
-  textBox(slide, "Top row: denoising (most sensitive). Bottom row: random inpainting (least sensitive). The same selection rule is used across domains.", 142, 612, 996, 42, { fontSize: 18, color: C.muted, alignment: "center" });
-  footer(slide);
-  notes(slide, "The AFHQ-Cat row uses the same predeclared qualitative image position and task-selection rule as CelebA.", ["Generated figure: artifacts/figures/figure3_afhq_qualitative.png"]);
+ const s=slide('Conclusions');
+ box(s,'Sensitivity Depends on the Task','Denoising is the most sensitive setting. Random inpainting is nearly unchanged over the tested range.',44,124,912,139,30);
+ box(s,'Overestimation Consistently Hurts Mean PSNR','Both r = 1.25 and r = 1.50 reduce mean PSNR in all ten dataset–task settings.',44,292,912,138,30);
+ box(s,'Underestimation Has No Universal Outcome','Super-resolution improves in both datasets. Severe underestimation hurts denoising, and LPIPS can disagree with PSNR and SSIM.',44,459,912,171,30);
+ text(s,'Noise calibration should be evaluated for the task and the metric.',44,660,912,38,28,C.blue,true,'center');
+ note(s,'Conclusions are restricted to the five tested ratios and the fixed samples. No new reconstruction was run to produce these slides.');
 }
-
-// Slide 11
 {
-  const slide = presentation.slides.add();
-  header(slide, "Noise mismatch changes the reconstruction trajectory", 11);
-  await addImage(slide, "artifacts/figures/figure4_trajectory.png", { left: 196, top: 118, width: 888, height: 526 }, "FLOWER trajectories for five noise ratios at five flow times");
-  textBox(slide, "Rows", 82, 210, 220, 28, { fontSize: 16, bold: true, color: C.blue, alignment: "center" });
-  textBox(slide, "0.5x sigma\n0.75x sigma\n1.0x sigma\n1.25x sigma\n1.5x sigma", 82, 250, 220, 230, { fontSize: 19, bold: true, color: C.navy, alignment: "center" });
-  rect(slide, 972, 242, 238, 188, C.pale, C.grid, 14);
-  textBox(slide, "Controlled comparison", 994, 258, 194, 26, { fontSize: 15, bold: true, color: C.blue, alignment: "center" });
-  textBox(slide, "Every row shares the same source-noise sequence. Visible separation is caused by the assumed sigma and its downstream effects.", 994, 296, 194, 116, { fontSize: 16, color: C.navy, alignment: "center" });
-  footer(slide);
-  notes(slide, "The setting has the highest mean absolute paired PSNR response. Its displayed image is closest to median image-level sensitivity, which avoids selecting an extreme failure.", ["Selection metadata: artifacts/experiments/main/analysis_capture/metadata.json", "Generated figure: artifacts/figures/figure4_trajectory.png"]);
+ const s=slide('References and Reproducible Results');
+ text(s,'M. Pourya, B. El Rawas and M. Unser\nFLOWER: A Flow-Matching Solver for Inverse Problems\nICLR 2026',54,130,892,126,29);
+ text(s,'Y. Lipman et al.\nFlow Matching for Generative Modeling\nICLR 2023',54,294,892,116,28);
+ box(s,'Project Results','Raw and paired metrics, all 50 summary rows, saved examples, and trajectory captures are in artifacts/experiments/main/.',44,458,912,148,27);
+ text(s,'github.com/ItayShorian07/Diffusion--flower-project',44,644,912,40,25,C.blue,false,'center');
+ note(s,'Scientific sources and experimental files are cited throughout the speaker notes. Report includes derivations, full result tables, and details of the LPIPS convention.');
 }
 
-// Slide 12
-{
-  const slide = presentation.slides.add();
-  header(slide, "The direct effect appears in measurement refinement", 12);
-  await addImage(slide, "artifacts/figures/figure5_internal_states.png", { left: 52, top: 150, width: 1176, height: 442 }, "FLOWER prior destination, measurement refinement, and next state");
-  textBox(slide, "Columns compare the prior destination, refined destination, and next trajectory state at three times. Rows compare ratios 0.5, 1.0, and 1.5.", 118, 608, 1044, 50, { fontSize: 17, color: C.muted, alignment: "center" });
-  footer(slide);
-  notes(slide, "Sigma enters Step 2 directly. Step 1 has no explicit sigma term, although its input state can already differ because of earlier refinements.", ["Generated figure: artifacts/figures/figure5_internal_states.png", "FLOWER paper Figure 3 and Proposition 2: https://openreview.net/forum?id=QGd34p02mI"]);
+const cropGroups=await applyFinalPresentationContent(p,{root:ROOT,buildDir:BUILD,font:F});
+const candidate=path.join(BUILD,'candidate.pptx');
+await (await PresentationFile.exportPptx(p)).save(candidate);
+await fs.writeFile(path.join(BUILD,'chart-errors.json'),JSON.stringify(chartErrors));
+const patched=path.join(BUILD,'candidate-with-ci.pptx');
+const patch=spawnSync(path.join(RUNTIME,'python/bin/python3'),[path.join(ROOT,'tools/patch_chart_confidence.py'),candidate,patched,path.join(BUILD,'chart-errors.json')],{encoding:'utf8'});
+if(patch.status!==0)throw new Error(patch.stderr||patch.stdout);
+const finalPath=process.env.FLOWER_PPTX_OUTPUT || OUT;
+await fs.mkdir(path.dirname(finalPath),{recursive:true});
+const cropManifest=path.join(BUILD,'crop-groups.json');
+await fs.writeFile(cropManifest,JSON.stringify(cropGroups));
+const cropped=path.join(BUILD,'candidate-with-crops.pptx');
+const cropPatch=spawnSync(path.join(RUNTIME,'python/bin/python3'),[path.join(ROOT,'tools/patch_presentation_crops.py'),patched,cropped,cropManifest],{encoding:'utf8'});
+if(cropPatch.status!==0)throw new Error(cropPatch.stderr||cropPatch.stdout);
+const validated=path.join(BUILD,'validated',`presentation-${Date.now()}.pptx`);
+await fs.mkdir(path.dirname(validated),{recursive:true});
+await finalizePresentation({workspaceDir:ROOT,candidatePath:cropped,finalPath:validated,
+ pythonExecutable:path.join(RUNTIME,'python/bin/python3'),
+ integrityValidatorPath:path.join(SKILL,'container_tools/inspect_presentation_package_integrity.py'),
+ layoutValidatorPath:path.join(SKILL,'container_tools/inspect_presentation_layout_geometry.py'),
+ explicitTotalSlideCount:p.slides.items.length,
+ requiredNativeChartOwnerSlides:[...new Set(chartOwners)],requiredNativeTableOwnerSlides:[...new Set(tableOwners)],
+ materializeLiteralChartWorkbooks:true,verifyArtifactToolImport:true,
+ layoutArgs:['--expected-slide-size-emu','9525000,7143750','--validate-heading-fit',
+   ...[...new Set(tableOwners)].flatMap(n=>['--require-native-table-slide',String(n)])],
+ // The PDF uses PostScript name RobotoCondensed-Regular; the font's actual
+ // Office family is "Roboto Condensed". The strict reference validator does
+ // not normalize this alias, so declare that exact family as the design font.
+ fontPolicy:{basis:'design',families:[F]},
+ receiptPath:path.join(BUILD,path.basename(finalPath)+'.'+Date.now()+'.validation.json')});
+await fs.copyFile(validated,finalPath);
+// Render the finalized package, with the exact reference font loaded in the renderer.
+const finalPresentation=await PresentationFile.importPptx(await FileBlob.load(finalPath));
+const renderDir=path.join(BUILD,'render');await fs.mkdir(renderDir,{recursive:true});
+for(let i=0;i<finalPresentation.slides.items.length;i++){
+ const preview=await finalPresentation.export({slide:finalPresentation.slides.items[i],format:'png',scale:1.6});
+ await fs.writeFile(path.join(renderDir,`slide-${String(i+1).padStart(2,'0')}.png`),Buffer.from(await preview.arrayBuffer()));
 }
-
-// Slide 13
-{
-  const slide = presentation.slides.add();
-  header(slide, "Mismatch sensitivity is task-specific and asymmetric", 13);
-  const topSettings = rankedSettings.slice(0, 6).reverse();
-  const chart = styleChart(slide.charts.add("bar", {
-    position: { left: 66, top: 146, width: 650, height: 450 },
-    categories: topSettings.map((item) => `${datasetLabels[item.dataset]} ${taskLabels[item.task]}`),
-    series: [{ name: "Mean absolute paired PSNR response", values: topSettings.map((item) => chartNumber(item.value)), fill: C.blue }],
-    barOptions: { direction: "bar", grouping: "clustered" },
-    hasLegend: false,
-    dataLabels: { showValue: true, position: "outEnd", numberFormatCode: "0.00" },
-    xAxis: { title: { text: "Mean absolute delta PSNR in dB", textStyle: { typeface: family, fontSize: 13, fill: C.muted } }, textStyle: { typeface: family, fontSize: 11, fill: C.muted }, majorGridlines: { style: "solid", fill: C.grid, width: 1 } },
-    yAxis: { textStyle: { typeface: family, fontSize: 11, fill: C.muted }, majorGridlines: null },
-  }));
-  textBox(slide, "Highest response", 780, 146, 390, 24, { fontSize: 15, bold: true, color: C.coral });
-  textBox(slide, `${datasetLabels[mostSensitive.dataset]} ${taskLabels[mostSensitive.task]}   ${mostSensitive.value.toFixed(2)} dB`, 780, 176, 390, 42, { fontSize: 23, bold: true, color: C.navy });
-  textBox(slide, "Most tolerant", 780, 242, 390, 24, { fontSize: 15, bold: true, color: C.green });
-  textBox(slide, `${datasetLabels[leastSensitive.dataset]} ${taskLabels[leastSensitive.task]}   ${leastSensitive.value.toFixed(2)} dB`, 780, 272, 390, 42, { fontSize: 23, bold: true, color: C.navy });
-  rect(slide, 772, 338, 414, 130, C.warm, C.grid, 14);
-  textBox(slide, "Underestimation can help", 798, 350, 362, 26, { fontSize: 16, bold: true, color: C.purple, alignment: "center" });
-  textBox(slide, `At 0.5x sigma, super-resolution gains ${celebaSrGain.toFixed(2)} dB on CelebA and ${afhqSrGain.toFixed(2)} dB on AFHQ-Cat.`, 800, 382, 358, 72, { fontSize: 19, bold: true, color: C.navy, alignment: "center" });
-  textBox(slide, "Evidence boundary", 780, 510, 390, 24, { fontSize: 15, bold: true, color: C.purple });
-  textBox(slide, "The claims apply to released Flower1-OT checkpoints, five tested ratios, and fixed 20-image samples. No additional model was trained.", 780, 540, 390, 92, { fontSize: 16, color: C.muted });
-  footer(slide, "Full tables, confidence intervals, mathematical derivations, and limitations are in the report");
-  notes(slide, "The ranking averages the absolute paired PSNR curve response across the four mismatched ratios. Overestimation is consistently harmful here, while moderate underestimation improves super-resolution and several AFHQ-Cat settings. The report gives the paired confidence intervals and cross-metric evidence.", ["Data: artifacts/experiments/main/summary.csv", "Report: artifacts/report/flower-noise-scale-mismatch-report.docx"]);
-}
-
-const candidatePath = path.join(BUILD_DIR, "candidate-v1.pptx");
-await (await PresentationFile.exportPptx(presentation)).save(candidatePath);
-
-const requirements = {
-  explicitTotalSlideCount: 13,
-  requiredNativeTableOwnerSlides: [5, 8],
-  requiredNativeChartOwnerSlides: [6, 7, 13],
-  materializeLiteralChartWorkbooks: true,
-};
-const fontPolicy = { basis: "design", families: [family] };
-const result = await finalizePresentation({
-  ...requirements,
-  workspaceDir: ROOT,
-  candidatePath,
-  finalPath: FINAL_PPTX,
-  pythonExecutable: RUNTIME_PYTHON,
-  integrityValidatorPath: path.join(SKILL_DIR, "container_tools/inspect_presentation_package_integrity.py"),
-  layoutValidatorPath: path.join(SKILL_DIR, "container_tools/inspect_presentation_layout_geometry.py"),
-  layoutArgs: [
-    "--expected-slide-size-emu", "12192000,6858000",
-    "--validate-bullet-geometry",
-    "--validate-heading-fit",
-    "--require-native-table-slide", "5",
-    "--require-native-table-slide", "8",
-  ],
-  requiredNativeTableOwnerSlides: requirements.requiredNativeTableOwnerSlides,
-  requiredNativeChartOwnerSlides: requirements.requiredNativeChartOwnerSlides,
-  materializeLiteralChartWorkbooks: true,
-  fontPolicy,
-  verifyArtifactToolImport: true,
-  receiptPath: path.join(STAGING_DIR, "flower-noise-scale-mismatch-v1.validation.json"),
-});
-
-console.log(JSON.stringify({ family, final: FINAL_PPTX, result }, null, 2));
+await fs.writeFile(path.join(BUILD,'provenance.json'),JSON.stringify({
+ officeFamily:F,aspectRatio:'4:3',detailCrops:cropGroups,
+ metricsSha256:crypto.createHash('sha256').update(await fs.readFile(path.join(ROOT,source,'metrics.csv'))).digest('hex'),
+ inferencePerformed:false},null,2));
+// Native Office-compatible rendering preserves custom chart confidence bars.
+// Supply the reference font explicitly without installing anything system-wide.
+const fontConfig=path.join(BUILD,'fonts.conf');
+await fs.writeFile(fontConfig,`<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd"><fontconfig><dir>/usr/local/texlive/2025/texmf-dist/fonts/opentype/google/roboto</dir><dir>/System/Library/Fonts</dir><dir>/Library/Fonts</dir><cachedir>/private/tmp/flower-font-cache</cachedir></fontconfig>`);
+const pdfExport=spawnSync(path.join(RUNTIME,'bin/override/soffice'),['--headless','--convert-to','pdf','--outdir',path.dirname(finalPath),finalPath],{encoding:'utf8',env:{...process.env,FONTCONFIG_FILE:fontConfig}});
+if(pdfExport.status!==0)throw new Error(pdfExport.stderr||pdfExport.stdout);
+console.log(JSON.stringify({finalPath,slides:p.slides.items.length,renderDir}));

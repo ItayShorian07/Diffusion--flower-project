@@ -86,21 +86,35 @@ These findings describe robustness of the released Flower1-OT checkpoints on the
 
 The current English deliverables are stored in:
 
-- [Academic report PDF](artifacts/report/robust-flower-report.pdf)
-- [Editable results presentation](artifacts/presentation/robust-flower-results.pptx)
-- [Presentation PDF](artifacts/presentation/robust-flower-results.pdf)
+- [Final report: FLOWER_Noise_Mismatch_Report.pdf](artifacts/report/FLOWER_Noise_Mismatch_Report.pdf) and [LaTeX source](artifacts/report/FLOWER_Noise_Mismatch_Report.tex)
+- [Final presentation: FLOWER_Noise_Mismatch_Presentation.pptx](artifacts/presentation/FLOWER_Noise_Mismatch_Presentation.pptx)
+- [Presentation PDF](artifacts/presentation/FLOWER_Noise_Mismatch_Presentation.pdf)
 - [Problem statement](artifacts/problem_statement.md)
 - `artifacts/figures/publication/`
 - `artifacts/experiments/main/`
 
-All 1,000 numerical measurements are preserved. Saved PNGs cover the fixed qualitative examples and selected trajectories, not every numerical row. The October 15 redesign requires no new GPU experiments. Earlier report, slide, and figure versions remain under their original filenames.
+The final English report has 25 pages, including magnified details for Figures 5–6 and the LPIPS preprocessing explanation in Section 4.3. The final presentation has 20 slides. These are the only report and presentation versions retained in the working tree; earlier versions remain recoverable through Git history.
 
-To rebuild the redesigned figures and report from the existing data:
+All 1,000 numerical measurements are preserved. Saved PNGs cover the fixed qualitative examples and selected trajectories, not every numerical row. No new GPU experiments are needed to rebuild the deliverables.
+
+To rebuild the figures and final report from the existing data:
 
 ```bash
+.venv/bin/pip install -r requirements-deliverables.txt
 .venv/bin/python tools/redesign_figures.py
-python3 tools/build_academic_report.py
+.venv/bin/python tools/build_report_detail_crops.py
+.venv/bin/python tools/build_report.py
 ```
+
+The report builder compiles the final LaTeX source as written; it does not replace the expanded mathematical content with a template. A TeX installation with `latexmk` is required. The presentation can be rebuilt with `node tools/build_presentation.mjs` in the configured Codex artifact runtime, or edited directly in PowerPoint. Its builder generates the latest layout from the completed results without depending on an older deck.
+
+Validate the final files and create the local submission bundle:
+
+```bash
+.venv/bin/python tools/validate_and_package_deliverables.py
+```
+
+The bundle is `artifacts/delivery/FLOWER_Noise_Mismatch_Project.zip`. ZIP files are not committed because the complete files and results are already versioned individually. The accompanying [manifest](artifacts/delivery/manifest.json) records the final filenames, page counts, and SHA-256 hashes.
 
 ## Run on Kaggle
 

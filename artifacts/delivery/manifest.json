@@ -1,0 +1,20 @@
+{
+  "report_pages": 25,
+  "presentation_slides": 20,
+  "verified_reconstructions": 1000,
+  "summary_groups": 50,
+  "publication_figures": 15,
+  "report_detail_panels": 2,
+  "presentation_detail_crops": 70,
+  "files": {
+    "artifacts/report/FLOWER_Noise_Mismatch_Report.pdf": "35271d23c68df90cee07c7d2682ad1bfa32ca666edba070f1a2e4d53a9eb8dfa",
+    "artifacts/report/FLOWER_Noise_Mismatch_Report.tex": "b340d7a5a8d8c3e8a82e9895764ebc7df2e496afd807a757f677cd1b0c561ff1",
+    "artifacts/presentation/FLOWER_Noise_Mismatch_Presentation.pptx": "29faa3b1313f39350379b01f4c5fd9a92e428b9f508b8ebfc43bdc3b7de05cbe",
+    "artifacts/presentation/FLOWER_Noise_Mismatch_Presentation.pdf": "abf2a38ddd769824775ac14ded5ea883b04be3919e3c749288197757922c99d3"
+  },
+  "source_csv_sha256": {
+    "summary.csv": "1068e22d57ce822ed358d91d0cc03cf25ea32bc84af70560af56a1fba8b5b217",
+    "metrics_with_deltas.csv": "c30fbec59ba12315ede0255f8240e7d549738b7836eba08569b3648f8670daa9",
+    "metrics.csv": "021827f85134af4a7dbe5b455ab8b5d3abe1632b792cd3cadca06525cb8c69e8"
+  }
+}
