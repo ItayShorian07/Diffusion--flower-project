@@ -1390,18 +1390,7 @@ with the same column interpretation.
 
 \end{figure}
 
-\begin{figure}[p]
-\ContinuedFloat
-\centering
-\includegraphics[width=\linewidth]{details/06_afhq_cat_detail_crops.pdf}
-\caption{
-AFHQ-Cat qualitative comparison (continued): magnified details for
-denoising and super-resolution from the same image as above.
-Gold boxes mark the crop location; all ratios use the identical region.
-The numbers remain full-image PSNR values, not crop-specific scores.
-}
-\label{fig:afhq-details}
-\end{figure}
+
 
 \FloatBarrier
 
@@ -1410,8 +1399,36 @@ The numbers remain full-image PSNR values, not crop-specific scores.
 % 5.5 TRAJECTORY
 % ------------------------------------------------------------
 
-% Page 15 trajectory material removed; preserve subsequent figure numbers.
-\setcounter{figure}{7}
+\subsection{What changes along the reconstruction trajectory}
+
+Figure~\ref{fig:trajectory} follows a representative CelebA
+denoising image, \texttt{182734.jpg}, selected near the median
+image-level sensitivity in the most sensitive setting.
+
+Early states contain strong source noise; changes between noise
+assumptions become clearer as its coefficient shrinks.
+
+Figure~\ref{fig:three} isolates the three steps at $t=0.75$:
+the noise-scale assumption enters Step 2 directly but also
+affects later Step 1 estimates indirectly through the changed trajectory.
+
+Step 3 is a noisy state, not a clean endpoint estimate.
+
+
+\begin{figure}[htbp]
+
+\centering
+
+\includegraphics[width=.70\linewidth,height=.60\textheight,keepaspectratio]{07_reconstruction_trajectory.png}
+
+\caption{
+FLOWER trajectory states for CelebA denoising across
+time and noise-scale ratios; the last column is the final reconstruction.
+}
+
+\label{fig:trajectory}
+
+\end{figure}
 
 
 \begin{figure}[htbp]
