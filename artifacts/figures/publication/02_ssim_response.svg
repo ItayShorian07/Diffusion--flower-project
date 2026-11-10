@@ -269,7 +269,7 @@ L 477.907062 102.872126
     </g>
     <g id="text_14">
      <text style="font-size: 11px; font-family: 'DejaVu Sans'; fill: #20252c" transform="translate(20.259355 249.45625) rotate(-90)">Mean change in SSIM</text>
-     <text style="font-size: 11px; font-family: 'DejaVu Sans'; fill: #20252c" transform="translate(33.462363 233.629141) rotate(-90)">Higher is better</text>
+     <text style="font-size: 11px; font-family: 'DejaVu Sans'; fill: #20252c" transform="translate(33.462363 233.629141) rotate(-90)"></text>
     </g>
    </g>
    <g id="patch_3">

@@ -1063,9 +1063,6 @@ Released OT checkpoints and paper-aligned step counts are used throughout.
 
 \subsection{Metrics and uncertainty}
 
-PSNR measures pixel fidelity (higher is better);
-SSIM measures structural similarity (higher is better);
-and LPIPS compares learned perceptual features (lower is better).
 
 LPIPS follows the public-code convention used in the completed experiments:
 postprocessed images are mapped to $[-1,1]$ and evaluated with
@@ -1217,8 +1214,6 @@ Error bars are approximate 95\% intervals across images.
 
 \caption{
 Mean PSNR differences by inverse problem and assumed noise ratio.
-Positive differences indicate improved fidelity compared with
-the correct-noise control.
 }
 
 \label{fig:heatmap}
@@ -1273,7 +1268,6 @@ and SSIM but better LPIPS, illustrating a perceptual--distortion trade-off.
 
 \caption{
 Paired SSIM differences.
-Higher values indicate improved structural similarity.
 }
 
 \label{fig:ssim}
@@ -1289,7 +1283,6 @@ Higher values indicate improved structural similarity.
 
 \caption{
 Paired LPIPS differences.
-Lower values indicate improved perceptual similarity.
 }
 
 \label{fig:lpips}
@@ -1304,7 +1297,6 @@ Lower values indicate improved perceptual similarity.
 
 \caption{
 Selected paired metric changes.
-PSNR and SSIM improve upward; LPIPS improves downward.
 }
 
 \label{tab:selected}

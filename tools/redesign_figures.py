@@ -66,7 +66,7 @@ def heading(fig, title, subtitle):
 def response(metric, number):
     label = {'psnr': 'PSNR', 'ssim': 'SSIM', 'lpips': 'LPIPS'}[metric]
     unit = ' (dB)' if metric == 'psnr' else ''
-    direction = 'Higher is better' if metric != 'lpips' else 'Lower is better'
+    direction = ''
     fig, axes = plt.subplots(1, 2, figsize=(12.6, 5.55), sharey=True)
     fig.subplots_adjust(left=.085, right=.98, bottom=.27, top=.81, wspace=.12)
     heading(fig, f'{label} response to an incorrect assumed noise level',
@@ -161,7 +161,7 @@ def qualitative(dataset,number):
             if j>=2:
                 row=image_metric(dataset,task,RATIOS[j-2])
                 ax.set_xlabel(f"{float(row['psnr']):.2f} dB",fontsize=10.5,labelpad=5)
-    fig.text(.5,.022,'Numbers below each reconstruction: individual-image PSNR in dB (higher is better).\n'
+    fig.text(.5,.022,'Numbers below each reconstruction: individual-image PSNR in dB.\n'
              r'$r=\sigma_a/\sigma_{\rm true}$. Blue frame: correct-noise control. Measurements are displayed in the image domain via $H^T y$.',
              ha='center',fontsize=9.5,color=GRAY,linespacing=1.6)
     save(fig,f'{number:02d}_{dataset}_reconstructions',vector=False)
@@ -213,7 +213,7 @@ def per_task(task,label):
                         yerr=[float(r[f'{metric}_delta_vs_correct_ci95']) for r in rows],color=color,
                         marker=marker,lw=1.8,capsize=3,ms=5,label=NAMES[d])
         ax.axhline(0,color='#666666',lw=.8);ax.axvline(1,color='#888888',ls='--',lw=.8)
-        ax.set_title(metric.upper()+(' (higher is better)' if metric!='lpips' else ' (lower is better)'),fontsize=11)
+        ax.set_title(metric.upper(),fontsize=11)
         ax.set_xticks(RATIOS,['.50','.75','1.00','1.25','1.50']);ax.set_xlabel(r'Assumed / true standard deviation, $r$',fontsize=10)
         ax.set_ylabel('Mean Δ'+metric.upper()+(' (dB)' if metric=='psnr' else ''));ax.grid(axis='y')
     fig.legend(*axes[0].get_legend_handles_labels(),loc='lower center',bbox_to_anchor=(.5,.04),ncol=2,frameon=False)

@@ -359,7 +359,7 @@ L 282.634115 258.552
 " style="fill: none; stroke: #929ba5; stroke-width: 0.75; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
    <g id="text_12">
-    <text style="font-weight: 700; font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #20252c" x="171.073034" y="85.152" transform="rotate(-0 171.073034 85.152)">PSNR (higher is better)</text>
+    <text style="font-weight: 700; font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #20252c" x="171.073034" y="85.152" transform="rotate(-0 171.073034 85.152)">PSNR</text>
    </g>
   </g>
   <g id="axes_2">
@@ -652,7 +652,7 @@ L 583.849034 258.552
 " style="fill: none; stroke: #929ba5; stroke-width: 0.75; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
    <g id="text_24">
-    <text style="font-weight: 700; font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #20252c" x="472.287953" y="85.152" transform="rotate(-0 472.287953 85.152)">SSIM (higher is better)</text>
+    <text style="font-weight: 700; font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #20252c" x="472.287953" y="85.152" transform="rotate(-0 472.287953 85.152)">SSIM</text>
    </g>
   </g>
   <g id="axes_3">
@@ -945,7 +945,7 @@ L 885.063953 258.552
 " style="fill: none; stroke: #929ba5; stroke-width: 0.75; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
    <g id="text_36">
-    <text style="font-weight: 700; font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #20252c" x="773.502872" y="85.152" transform="rotate(-0 773.502872 85.152)">LPIPS (lower is better)</text>
+    <text style="font-weight: 700; font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #20252c" x="773.502872" y="85.152" transform="rotate(-0 773.502872 85.152)">LPIPS</text>
    </g>
   </g>
   <g id="text_37">

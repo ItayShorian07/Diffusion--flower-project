@@ -284,7 +284,7 @@ L 477.907062 98.03765
     </g>
     <g id="text_15">
      <text style="font-size: 11px; font-family: 'DejaVu Sans'; fill: #20252c" transform="translate(20.259355 250.916328) rotate(-90)">Mean change in LPIPS</text>
-     <text style="font-size: 11px; font-family: 'DejaVu Sans'; fill: #20252c" transform="translate(33.462363 231.819297) rotate(-90)">Lower is better</text>
+     <text style="font-size: 11px; font-family: 'DejaVu Sans'; fill: #20252c" transform="translate(33.462363 231.819297) rotate(-90)"></text>
     </g>
    </g>
    <g id="patch_3">
